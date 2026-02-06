@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::graph::GraphStore;
+use crate::{graph::GraphStore, KaedeDbError};
 use crate::vector::{VectorIndex, VectorMetric};
 use crate::wal::{DataFamily, RecordKind, Wal};
 use parking_lot::RwLock;
@@ -199,6 +199,39 @@ impl KaedeDb {
         Ok(())
     }
 
+    /// Merge or set metadata for an existing vector without changing the embedding.
+    pub fn update_vector_meta(&self, id: Uuid, meta_patch: HashMap<String, String>) -> Result<()> {
+        let (vector, new_meta) = {
+            let data = self.vectors.inner.read();
+            let meta = self.vectors.meta.read();
+            let Some(vec) = data.get(&id).cloned() else {
+                return Err(KaedeDbError::NotFound);
+            };
+            let merged = if let Some(existing) = meta.get(&id) {
+                let mut m = existing.clone();
+                for (k, v) in meta_patch {
+                    m.insert(k, v);
+                }
+                m
+            } else {
+                meta_patch
+            };
+            (vec, merged)
+        };
+        // reuse vector write path to persist WAL + update meta; avoid neighbor relink to save work
+        let payload = bincode::serialize(&VecWalRecord {
+            vector: vector.clone(),
+            meta: Some(new_meta.clone()),
+        })?;
+        self.append_record(&RecordKind::Put {
+            family: DataFamily::Vec,
+            key: id,
+            payload,
+        })?;
+        self.vectors.insert(id, vector, Some(new_meta))?;
+        Ok(())
+    }
+
     pub fn update_vector(&self, id: Uuid, vector: Vec<f32>) -> Result<()> {
         self.put_vector(id, vector)
     }
@@ -311,6 +344,10 @@ impl KaedeDb {
 
     pub fn set_ef_construction(&self, ef: usize) {
         self.vectors.set_ef_construction(ef);
+    }
+
+    pub fn set_link_top_k(&mut self, k: usize) {
+        self.link_top_k = k;
     }
 
     pub fn flush_wal(&self) -> Result<()> {

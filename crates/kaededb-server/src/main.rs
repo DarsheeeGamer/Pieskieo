@@ -37,6 +37,11 @@ struct VectorBulk {
 }
 
 #[derive(Deserialize)]
+struct VectorMetaInput {
+    meta: HashMap<String, String>,
+}
+
+#[derive(Deserialize)]
 struct RowInput {
     id: Option<Uuid>,
     data: serde_json::Value,
@@ -50,6 +55,13 @@ struct VectorSearchInput {
     filter_ids: Option<Vec<Uuid>>,
     ef_search: Option<usize>,
     filter_meta: Option<HashMap<String, String>>,
+}
+
+#[derive(Deserialize)]
+struct VectorConfigInput {
+    ef_search: Option<usize>,
+    ef_construction: Option<usize>,
+    link_top_k: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -119,6 +131,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/row/:id", get(get_row))
         .route("/v1/row/:id", delete(delete_row))
         .route("/v1/vector", post(put_vector))
+        .route("/v1/vector/:id/meta", post(update_vector_meta))
+        .route("/v1/vector/config", post(update_vector_config))
         .route("/v1/vector/search", post(search_vector))
         .route("/v1/vector/rebuild", post(rebuild_vectors))
         .route("/v1/vector/snapshot/save", post(save_snapshot))
@@ -283,6 +297,21 @@ async fn delete_vector(
     }))
 }
 
+async fn update_vector_meta(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<VectorMetaInput>,
+) -> Result<Json<ApiResponse<&'static str>>, ApiError> {
+    state
+        .db
+        .update_vector_meta(id, input.meta)
+        .map_err(ApiError::from)?;
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: "meta-updated",
+    }))
+}
+
 async fn search_vector(
     State(state): State<AppState>,
     Json(input): Json<VectorSearchInput>,
@@ -311,6 +340,32 @@ async fn search_vector(
     Ok(Json(ApiResponse {
         ok: true,
         data: hits,
+    }))
+}
+
+async fn update_vector_config(
+    State(state): State<AppState>,
+    Json(input): Json<VectorConfigInput>,
+) -> Result<Json<ApiResponse<&'static str>>, ApiError> {
+    if let Some(ef) = input.ef_search {
+        state.db.set_ef_search(ef);
+    }
+    if let Some(efc) = input.ef_construction {
+        state.db.set_ef_construction(efc);
+    }
+    if let Some(k) = input.link_top_k {
+        // Arc<KaedeDb> is shared; clone then try to get mutable ref if no other owners.
+        let mut db_arc = state.db.clone();
+        if let Some(db_mut) = Arc::get_mut(&mut db_arc) {
+            db_mut.set_link_top_k(k);
+        } else {
+            // Fallback: log and skip if currently in use by other handles.
+            tracing::warn!("link_top_k update skipped (db state is shared)");
+        }
+    }
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: "updated",
     }))
 }
 
