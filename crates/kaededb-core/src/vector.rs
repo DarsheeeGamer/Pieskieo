@@ -428,8 +428,25 @@ impl VectorIndex {
             std::fs::create_dir_all(dir)?;
             let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("hnsw");
             let _ = hnsw.file_dump(dir, stem);
+
+            // Persist rev_map + next_id for stable id mapping on reload.
+            let map_path = dir.join(format!("{stem}.map.bin"));
+            let rev = self.rev_map.read();
+            let next = self.next_id.load(Ordering::SeqCst);
+            let mut w = BufWriter::new(File::create(map_path)?);
+            bincode::serialize_into(&mut w, &(rev.clone(), next))?;
+            w.flush()?;
+            if let Some(f) = w.get_ref().try_clone().ok() {
+                f.sync_all()?;
+            }
         }
         Ok(())
+    }
+
+    /// Load HNSW graph and mappings if present.
+    /// Note: hnsw_rs currently lacks a stable load API; return false to trigger rebuild.
+    pub fn load_hnsw(&self, _path: impl AsRef<Path>) -> Result<bool> {
+        Ok(false)
     }
 
     pub fn set_ef_search(&self, ef: usize) {
