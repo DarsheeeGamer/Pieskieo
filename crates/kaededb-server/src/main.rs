@@ -42,6 +42,11 @@ struct VectorMetaInput {
 }
 
 #[derive(Deserialize)]
+struct VectorMetaDeleteInput {
+    keys: Vec<String>,
+}
+
+#[derive(Deserialize)]
 struct RowInput {
     id: Option<Uuid>,
     data: serde_json::Value,
@@ -75,6 +80,13 @@ struct EdgeInput {
 struct ApiResponse<T> {
     ok: bool,
     data: T,
+}
+
+#[derive(Serialize)]
+struct VectorOutput {
+    id: Uuid,
+    vector: Vec<f32>,
+    meta: Option<HashMap<String, String>>,
 }
 
 #[tokio::main]
@@ -122,6 +134,21 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    if let Ok(secs) = std::env::var("KAEDEDB_REBUILD_INTERVAL_SECS") {
+        if let Ok(secs) = secs.parse::<u64>() {
+            let db = state.db.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(secs));
+                loop {
+                    interval.tick().await;
+                    if let Err(e) = db.rebuild_vectors() {
+                        tracing::warn!("vector rebuild failed: {e}");
+                    }
+                }
+            });
+        }
+    }
+
     let app = Router::new()
         .route("/healthz", get(health))
         .route("/v1/doc", post(put_doc))
@@ -133,6 +160,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/vector", post(put_vector))
         .route("/v1/vector/:id/meta", post(update_vector_meta))
         .route("/v1/vector/config", post(update_vector_config))
+        .route("/v1/vector/:id/meta/delete", post(delete_vector_meta_keys))
+        .route("/v1/vector/:id", get(get_vector))
         .route("/v1/vector/search", post(search_vector))
         .route("/v1/vector/rebuild", post(rebuild_vectors))
         .route("/v1/vector/snapshot/save", post(save_snapshot))
@@ -297,6 +326,17 @@ async fn delete_vector(
     }))
 }
 
+async fn get_vector(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<VectorOutput>>, ApiError> {
+    let (vector, meta) = state.db.get_vector(&id).ok_or(ApiError::NotFound)?;
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: VectorOutput { id, vector, meta },
+    }))
+}
+
 async fn update_vector_meta(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -309,6 +349,21 @@ async fn update_vector_meta(
     Ok(Json(ApiResponse {
         ok: true,
         data: "meta-updated",
+    }))
+}
+
+async fn delete_vector_meta_keys(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    Json(input): Json<VectorMetaDeleteInput>,
+) -> Result<Json<ApiResponse<&'static str>>, ApiError> {
+    state
+        .db
+        .remove_vector_meta_keys(id, &input.keys)
+        .map_err(ApiError::from)?;
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: "meta-keys-removed",
     }))
 }
 

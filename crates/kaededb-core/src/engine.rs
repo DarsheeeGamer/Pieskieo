@@ -1,7 +1,7 @@
 use crate::error::Result;
-use crate::{graph::GraphStore, KaedeDbError};
 use crate::vector::{VectorIndex, VectorMetric};
 use crate::wal::{DataFamily, RecordKind, Wal};
+use crate::{graph::GraphStore, KaedeDbError};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -331,6 +331,12 @@ impl KaedeDb {
         self.vectors.rebuild_hnsw()
     }
 
+    pub fn get_vector(&self, id: &Uuid) -> Option<(Vec<f32>, Option<HashMap<String, String>>)> {
+        let vec = self.vectors.inner.read().get(id).cloned()?;
+        let meta = self.vectors.meta.read().get(id).cloned();
+        Some((vec, meta))
+    }
+
     pub fn save_vector_snapshot(&self) -> Result<()> {
         let snap = self.path.join("vectors.snapshot");
         self.vectors.save_snapshot(&snap)?;
@@ -348,6 +354,32 @@ impl KaedeDb {
 
     pub fn set_link_top_k(&mut self, k: usize) {
         self.link_top_k = k;
+    }
+
+    pub fn remove_vector_meta_keys(&self, id: Uuid, keys: &[String]) -> Result<()> {
+        let (vector, meta) = {
+            let data = self.vectors.inner.read();
+            let meta = self.vectors.meta.read();
+            let Some(vec) = data.get(&id).cloned() else {
+                return Err(KaedeDbError::NotFound);
+            };
+            let mut m = meta.get(&id).cloned().unwrap_or_default();
+            for k in keys {
+                m.remove(k);
+            }
+            (vec, m)
+        };
+        let payload = bincode::serialize(&VecWalRecord {
+            vector: vector.clone(),
+            meta: Some(meta.clone()),
+        })?;
+        self.append_record(&RecordKind::Put {
+            family: DataFamily::Vec,
+            key: id,
+            payload,
+        })?;
+        self.vectors.insert(id, vector, Some(meta))?;
+        Ok(())
     }
 
     pub fn flush_wal(&self) -> Result<()> {
