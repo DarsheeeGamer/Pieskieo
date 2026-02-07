@@ -80,6 +80,7 @@ cargo run -p pieskieo-cli -- --connect pieskieo@localhost --port 8000 -W
 - Rate-limit responses return `429` with `Retry-After` seconds.
 - Audit log written to `<data>/logs/audit.log` (rotates daily/10MB, env `PIESKIEO_AUDIT_MAX_MB`) with timestamp, ip, method, path, status, role, latency.
 - Basic replication hooks: `GET /v1/replica/wal` (admin) returns base64 WAL records; `POST /v1/replica/apply` accepts `{records:[..]}` to apply to followers.
+- Incremental replication: `/v1/replica/wal?since=<offset>` returns per-shard slices and `end_offset`; pull/apply in a loop to stay in sync.
 
 ## CLI quickstart
 - Connect: `pieskieo connect alice@db.example.com --port 8443 -W`
@@ -96,6 +97,7 @@ cargo run -p pieskieo-cli -- --connect pieskieo@localhost --port 8000 -W
 - `PIESKIEO_RATE_MAX`, `PIESKIEO_RATE_WINDOW_SECS` per-IP throttling
 - `PIESKIEO_AUDIT_MAX_MB` audit log rotation size (daily files)
 - `PIESKIEO_AUTH_*` lockout/complexity (see Auth & security)
+- Replication uses admin auth; optionally poll with `since=end_offset` to tail WAL.
 
 ## Benchmark tools
 - Core bench: `cargo run -p pieskieo-core --bin bench --release -- <n> <dim> [ef_c] [ef_s]`

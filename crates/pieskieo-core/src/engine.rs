@@ -1326,6 +1326,10 @@ impl PieskieoDb {
         self.wal.write().append(record)
     }
 
+    pub fn wal_replay_since(&self, offset: u64) -> Result<(Vec<RecordKind>, u64)> {
+        self.wal.read().replay_since(offset)
+    }
+
     pub fn wal_dump(&self) -> Result<Vec<RecordKind>> {
         self.wal.read().replay()
     }

@@ -538,6 +538,22 @@ struct ReplicationBatch {
 }
 
 #[derive(Deserialize)]
+struct WalQuery {
+    since: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct WalShardSlice {
+    shard: usize,
+    end_offset: u64,
+    records: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct WalExport {
+    slices: Vec<WalShardSlice>,
+}
+#[derive(Deserialize)]
 struct EdgeInput {
     src: Uuid,
     dst: Uuid,
@@ -1442,22 +1458,30 @@ async fn metrics(
 async fn replica_wal(
     State(state): State<AppState>,
     Extension(role): Extension<Role>,
-) -> Result<Json<ApiResponse<Vec<String>>>, ApiError> {
+    Query(q): Query<WalQuery>,
+) -> Result<Json<ApiResponse<WalExport>>, ApiError> {
     if !matches!(role, Role::Admin) {
         return Err(ApiError::Forbidden);
     }
-    let mut out = Vec::new();
-    for shard in state.pool.each() {
-        let wal = shard.wal_dump().map_err(ApiError::from)?;
-        for rec in wal {
+    let since = q.since.unwrap_or(0);
+    let mut slices = Vec::new();
+    for (idx, shard) in state.pool.shards.iter().enumerate() {
+        let (records, end) = shard.wal_replay_since(since).map_err(ApiError::from)?;
+        let mut encoded: Vec<String> = Vec::with_capacity(records.len());
+        for rec in records {
             let bytes =
                 bincode::serialize(&rec).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
-            out.push(B64.encode(bytes));
+            encoded.push(B64.encode(bytes));
         }
+        slices.push(WalShardSlice {
+            shard: idx,
+            end_offset: end,
+            records: encoded,
+        });
     }
     Ok(Json(ApiResponse {
         ok: true,
-        data: out,
+        data: WalExport { slices },
     }))
 }
 
