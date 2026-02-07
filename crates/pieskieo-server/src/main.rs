@@ -8,7 +8,7 @@ use axum::{
     Json, Router,
 };
 use futures::future::join_all;
-use kaededb_core::{KaedeDb, KaedeDbError, VectorParams as KaedeDbVectorParams};
+use pieskieo_core::{PieskieoDb, PieskieoError, VectorParams as PieskieoVectorParams};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
@@ -91,11 +91,11 @@ struct VectorOutput {
 }
 
 struct DbPool {
-    shards: Vec<Arc<KaedeDb>>,
+    shards: Vec<Arc<PieskieoDb>>,
 }
 
 impl DbPool {
-    fn new(base_dir: &str, params: KaedeDbVectorParams, shards: usize) -> anyhow::Result<Self> {
+    fn new(base_dir: &str, params: PieskieoVectorParams, shards: usize) -> anyhow::Result<Self> {
         let mut v = Vec::with_capacity(shards.max(1));
         for i in 0..shards.max(1) {
             let mut p = params.clone();
@@ -107,12 +107,12 @@ impl DbPool {
                 base_dir.to_string()
             };
             std::fs::create_dir_all(&dir)?;
-            v.push(Arc::new(KaedeDb::open_with_params(&dir, p)?));
+            v.push(Arc::new(PieskieoDb::open_with_params(&dir, p)?));
         }
         Ok(Self { shards: v })
     }
 
-    fn shard_for(&self, id: &Uuid) -> Arc<KaedeDb> {
+    fn shard_for(&self, id: &Uuid) -> Arc<PieskieoDb> {
         if self.shards.len() == 1 {
             return self.shards[0].clone();
         }
@@ -122,12 +122,12 @@ impl DbPool {
         self.shards[idx].clone()
     }
 
-    fn each(&self) -> impl Iterator<Item = Arc<KaedeDb>> + '_ {
+    fn each(&self) -> impl Iterator<Item = Arc<PieskieoDb>> + '_ {
         self.shards.iter().cloned()
     }
 
-    fn aggregate_metrics(&self) -> kaededb_core::engine::MetricsSnapshot {
-        let mut agg = kaededb_core::engine::MetricsSnapshot {
+    fn aggregate_metrics(&self) -> pieskieo_core::engine::MetricsSnapshot {
+        let mut agg = pieskieo_core::engine::MetricsSnapshot {
             docs: 0,
             rows: 0,
             vectors: 0,
@@ -165,7 +165,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .init();
 
-    let data_dir = std::env::var("KAEDEDB_DATA").unwrap_or_else(|_| "data".to_string());
+    let data_dir = std::env::var("PIESKIEO_DATA").unwrap_or_else(|_| "data".to_string());
     let params = vector_params_from_env();
     let shards = params.shard_total.max(1);
     let pool = Arc::new(DbPool::new(&data_dir, params, shards)?);
@@ -173,7 +173,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState { pool };
 
     // background WAL flusher (group commit) for better latency.
-    let flush_ms = std::env::var("KAEDEDB_WAL_FLUSH_MS")
+    let flush_ms = std::env::var("PIESKIEO_WAL_FLUSH_MS")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(50);
@@ -192,7 +192,7 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-    if let Ok(secs) = std::env::var("KAEDEDB_SNAPSHOT_INTERVAL_SECS") {
+    if let Ok(secs) = std::env::var("PIESKIEO_SNAPSHOT_INTERVAL_SECS") {
         if let Ok(secs) = secs.parse::<u64>() {
             let pool = state.pool.clone();
             tokio::spawn(async move {
@@ -209,7 +209,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    if let Ok(secs) = std::env::var("KAEDEDB_REBUILD_INTERVAL_SECS") {
+    if let Ok(secs) = std::env::var("PIESKIEO_REBUILD_INTERVAL_SECS") {
         if let Ok(secs) = secs.parse::<u64>() {
             let pool = state.pool.clone();
             tokio::spawn(async move {
@@ -251,7 +251,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/graph/:id", get(list_neighbors))
         .with_state(state);
 
-    let addr: SocketAddr = std::env::var("KAEDEDB_LISTEN")
+    let addr: SocketAddr = std::env::var("PIESKIEO_LISTEN")
         .unwrap_or_else(|_| "0.0.0.0:8000".into())
         .parse()?;
 
@@ -261,42 +261,42 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn vector_params_from_env() -> KaedeDbVectorParams {
-    let metric = match std::env::var("KAEDEDB_VECTOR_METRIC")
+fn vector_params_from_env() -> PieskieoVectorParams {
+    let metric = match std::env::var("PIESKIEO_VECTOR_METRIC")
         .unwrap_or_default()
         .to_lowercase()
         .as_str()
     {
-        "cosine" => kaededb_core::vector::VectorMetric::Cosine,
-        "dot" => kaededb_core::vector::VectorMetric::Dot,
-        _ => kaededb_core::vector::VectorMetric::L2,
+        "cosine" => pieskieo_core::vector::VectorMetric::Cosine,
+        "dot" => pieskieo_core::vector::VectorMetric::Dot,
+        _ => pieskieo_core::vector::VectorMetric::L2,
     };
-    let ef_c = std::env::var("KAEDEDB_EF_CONSTRUCTION")
+    let ef_c = std::env::var("PIESKIEO_EF_CONSTRUCTION")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(200);
-    let ef_s = std::env::var("KAEDEDB_EF_SEARCH")
+    let ef_s = std::env::var("PIESKIEO_EF_SEARCH")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(50);
-    let max_el = std::env::var("KAEDEDB_VEC_MAX_ELEMENTS")
+    let max_el = std::env::var("PIESKIEO_VEC_MAX_ELEMENTS")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(100_000);
-    let link_top_k = std::env::var("KAEDEDB_LINK_K")
+    let link_top_k = std::env::var("PIESKIEO_LINK_K")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(4);
-    let shard_total = std::env::var("KAEDEDB_SHARD_TOTAL")
+    let shard_total = std::env::var("PIESKIEO_SHARD_TOTAL")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(1);
-    let shard_id = std::env::var("KAEDEDB_SHARD_ID")
+    let shard_id = std::env::var("PIESKIEO_SHARD_ID")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(0);
 
-    KaedeDbVectorParams {
+    PieskieoVectorParams {
         metric,
         ef_construction: ef_c,
         ef_search: ef_s,
@@ -495,13 +495,13 @@ async fn delete_vector_meta_keys(
 async fn search_vector(
     State(state): State<AppState>,
     Json(input): Json<VectorSearchInput>,
-) -> Result<Json<ApiResponse<Vec<kaededb_core::VectorSearchResult>>>, ApiError> {
+) -> Result<Json<ApiResponse<Vec<pieskieo_core::VectorSearchResult>>>, ApiError> {
     let k = input.k.unwrap_or(10);
     let metric = match input.metric.as_deref() {
-        Some("cosine") => kaededb_core::vector::VectorMetric::Cosine,
-        Some("dot") => kaededb_core::vector::VectorMetric::Dot,
-        Some("l2") => kaededb_core::vector::VectorMetric::L2,
-        _ => kaededb_core::vector::VectorMetric::L2,
+        Some("cosine") => pieskieo_core::vector::VectorMetric::Cosine,
+        Some("dot") => pieskieo_core::vector::VectorMetric::Dot,
+        Some("l2") => pieskieo_core::vector::VectorMetric::L2,
+        _ => pieskieo_core::vector::VectorMetric::L2,
     };
 
     if let Some(ef) = input.ef_search {
@@ -623,7 +623,7 @@ async fn add_edge(
 async fn list_neighbors(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
-) -> Result<Json<ApiResponse<Vec<kaededb_core::Edge>>>, ApiError> {
+) -> Result<Json<ApiResponse<Vec<pieskieo_core::Edge>>>, ApiError> {
     let edges = state.pool.shard_for(&id).neighbors(id, 100);
     Ok(Json(ApiResponse {
         ok: true,
@@ -653,7 +653,7 @@ async fn metrics(
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let m = state.pool.aggregate_metrics();
     let mut body = format!(
-        "kaededb_docs {}\nkaededb_rows {}\nkaededb_vectors {}\nkaededb_vector_tombstones {}\nkaededb_hnsw_ready {}\nkaededb_ef_search {}\nkaededb_ef_construction {}\nkaededb_link_top_k {}\nkaededb_shard_total {}\n",
+        "pieskieo_docs {}\npieskieo_rows {}\npieskieo_vectors {}\npieskieo_vector_tombstones {}\npieskieo_hnsw_ready {}\npieskieo_ef_search {}\npieskieo_ef_construction {}\npieskieo_link_top_k {}\npieskieo_shard_total {}\n",
         m.docs,
         m.rows,
         m.vectors,
@@ -667,7 +667,7 @@ async fn metrics(
     for (idx, shard) in state.pool.shards.iter().enumerate() {
         let s = shard.metrics();
         body.push_str(&format!(
-            "kaededb_shard_vectors{{shard=\"{}\"}} {}\nkaededb_shard_docs{{shard=\"{}\"}} {}\nkaededb_shard_rows{{shard=\"{}\"}} {}\n",
+            "pieskieo_shard_vectors{{shard=\"{}\"}} {}\npieskieo_shard_docs{{shard=\"{}\"}} {}\npieskieo_shard_rows{{shard=\"{}\"}} {}\n",
             idx, s.vectors, idx, s.docs, idx, s.rows
         ));
     }
@@ -688,11 +688,11 @@ enum ApiError {
     Internal(anyhow::Error),
 }
 
-impl From<KaedeDbError> for ApiError {
-    fn from(value: KaedeDbError) -> Self {
+impl From<PieskieoError> for ApiError {
+    fn from(value: PieskieoError) -> Self {
         match value {
-            KaedeDbError::NotFound => ApiError::NotFound,
-            KaedeDbError::WrongShard => ApiError::WrongShard,
+            PieskieoError::NotFound => ApiError::NotFound,
+            PieskieoError::WrongShard => ApiError::WrongShard,
             other => ApiError::Internal(anyhow::Error::new(other)),
         }
     }

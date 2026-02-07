@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum KaedeDbError {
+pub enum PieskieoError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
     #[error("serialization error: {0}")]
@@ -14,4 +14,4 @@ pub enum KaedeDbError {
     WrongShard,
 }
 
-pub type Result<T> = std::result::Result<T, KaedeDbError>;
+pub type Result<T> = std::result::Result<T, PieskieoError>;

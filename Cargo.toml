@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "crates/kaededb-core",
-    "crates/kaededb-server",
+    "crates/pieskieo-core",
+    "crates/pieskieo-server",
 ]
 resolver = "2"
 

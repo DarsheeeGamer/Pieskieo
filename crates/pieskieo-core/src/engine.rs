@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::vector::{VectorIndex, VectorMetric};
 use crate::wal::{DataFamily, RecordKind, Wal};
-use crate::{graph::GraphStore, KaedeDbError};
+use crate::{error::PieskieoError, graph::GraphStore};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -16,7 +16,7 @@ pub(crate) struct Collections {
     docs: BTreeMap<Uuid, Value>,
 }
 
-pub struct KaedeDb {
+pub struct PieskieoDb {
     path: PathBuf,
     pub(crate) wal: RwLock<Wal>,
     pub(crate) data: Arc<RwLock<Collections>>,
@@ -39,7 +39,7 @@ struct VecWalRecord {
     meta: Option<HashMap<String, String>>,
 }
 
-impl KaedeDb {
+impl PieskieoDb {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         Self::open_with_params(path, VectorParams::default())
     }
@@ -124,7 +124,7 @@ impl KaedeDb {
 
     pub fn put_doc(&self, id: Uuid, json: Value) -> Result<()> {
         if !self.owns(&id) {
-            return Err(KaedeDbError::WrongShard);
+            return Err(PieskieoError::WrongShard);
         }
         let payload = serde_json::to_vec(&json)?;
         self.append_record(&RecordKind::Put {
@@ -138,7 +138,7 @@ impl KaedeDb {
 
     pub fn delete_doc(&self, id: &Uuid) -> Result<()> {
         if !self.owns(id) {
-            return Err(KaedeDbError::WrongShard);
+            return Err(PieskieoError::WrongShard);
         }
         self.append_record(&RecordKind::Delete {
             family: DataFamily::Doc,
@@ -154,7 +154,7 @@ impl KaedeDb {
 
     pub fn put_row<T: Serialize>(&self, id: Uuid, row: &T) -> Result<()> {
         if !self.owns(&id) {
-            return Err(KaedeDbError::WrongShard);
+            return Err(PieskieoError::WrongShard);
         }
         let json = serde_json::to_value(row)?;
         let payload = serde_json::to_vec(&json)?;
@@ -169,7 +169,7 @@ impl KaedeDb {
 
     pub fn delete_row(&self, id: &Uuid) -> Result<()> {
         if !self.owns(id) {
-            return Err(KaedeDbError::WrongShard);
+            return Err(PieskieoError::WrongShard);
         }
         self.append_record(&RecordKind::Delete {
             family: DataFamily::Row,
@@ -208,7 +208,7 @@ impl KaedeDb {
         meta: Option<HashMap<String, String>>,
     ) -> Result<()> {
         if !self.owns(&id) {
-            return Err(KaedeDbError::WrongShard);
+            return Err(PieskieoError::WrongShard);
         }
         let payload = bincode::serialize(&VecWalRecord {
             vector: vector.clone(),
@@ -230,7 +230,7 @@ impl KaedeDb {
             let data = self.vectors.inner.read();
             let meta = self.vectors.meta.read();
             let Some(vec) = data.get(&id).cloned() else {
-                return Err(KaedeDbError::NotFound);
+                return Err(PieskieoError::NotFound);
             };
             let merged = if let Some(existing) = meta.get(&id) {
                 let mut m = existing.clone();
@@ -263,7 +263,7 @@ impl KaedeDb {
 
     pub fn delete_vector(&self, id: &Uuid) -> Result<()> {
         if !self.owns(id) {
-            return Err(KaedeDbError::WrongShard);
+            return Err(PieskieoError::WrongShard);
         }
         self.append_record(&RecordKind::Delete {
             family: DataFamily::Vec,
@@ -342,7 +342,7 @@ impl KaedeDb {
 
     pub fn add_edge(&self, src: Uuid, dst: Uuid, weight: f32) -> Result<()> {
         if !self.owns(&src) {
-            return Err(KaedeDbError::WrongShard);
+            return Err(PieskieoError::WrongShard);
         }
         let payload = bincode::serialize(&crate::graph::Edge { src, dst, weight })?;
         self.append_record(&RecordKind::Put {
@@ -392,7 +392,7 @@ impl KaedeDb {
             let data = self.vectors.inner.read();
             let meta = self.vectors.meta.read();
             let Some(vec) = data.get(&id).cloned() else {
-                return Err(KaedeDbError::NotFound);
+                return Err(PieskieoError::NotFound);
             };
             let mut m = meta.get(&id).cloned().unwrap_or_default();
             for k in keys {
@@ -519,7 +519,7 @@ impl Default for VectorParams {
     }
 }
 
-impl Drop for KaedeDb {
+impl Drop for PieskieoDb {
     fn drop(&mut self) {
         let snap = self.path.join("vectors.snapshot");
         let _ = self.vectors.save_snapshot(snap);
@@ -541,7 +541,7 @@ mod tests {
     #[tokio::test]
     async fn round_trip_doc_and_vector() -> Result<()> {
         let dir = tempdir().unwrap();
-        let db = KaedeDb::open(dir.path())?;
+        let db = PieskieoDb::open(dir.path())?;
         let id = Uuid::new_v4();
         db.put_doc(id, serde_json::json!({"hello": "world"}))?;
         db.put_vector(id, vec![0.1, 0.2, 0.3])?;
@@ -556,7 +556,7 @@ mod tests {
     #[tokio::test]
     async fn graph_neighbors() -> Result<()> {
         let dir = tempdir().unwrap();
-        let db = KaedeDb::open(dir.path())?;
+        let db = PieskieoDb::open(dir.path())?;
         let a = Uuid::new_v4();
         let b = Uuid::new_v4();
         db.add_edge(a, b, 1.0)?;
@@ -569,7 +569,7 @@ mod tests {
     #[tokio::test]
     async fn auto_links_neighbors_when_enabled() -> Result<()> {
         let dir = tempdir().unwrap();
-        let db = KaedeDb::open_with_params(
+        let db = PieskieoDb::open_with_params(
             dir.path(),
             VectorParams {
                 link_top_k: 1,
@@ -592,7 +592,7 @@ mod tests {
     #[tokio::test]
     async fn vacuum_clears_tombstones_and_wal() -> Result<()> {
         let dir = tempdir().unwrap();
-        let db = KaedeDb::open(dir.path())?;
+        let db = PieskieoDb::open(dir.path())?;
         let a = Uuid::new_v4();
         let b = Uuid::new_v4();
         db.put_vector(a, vec![0.0, 0.0])?;

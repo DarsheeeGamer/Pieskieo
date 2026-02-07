@@ -1,12 +1,12 @@
 [package]
-name = "kaededb-server"
+name = "pieskieo-server"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 
 [dependencies]
-kaededb-core = { path = "../kaededb-core" }
+pieskieo-core = { path = "../pieskieo-core" }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

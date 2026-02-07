@@ -1,4 +1,4 @@
-use crate::error::{KaedeDbError, Result};
+use crate::error::{PieskieoError, Result};
 use hnsw_rs::{hnswio::HnswIo, prelude::*};
 use parking_lot::RwLock;
 use rayon::prelude::*;
@@ -120,7 +120,7 @@ impl VectorIndex {
             let mut dim_guard = self.dim.write();
             if let Some(dim) = *dim_guard {
                 if vector.len() != dim {
-                    return Err(KaedeDbError::NotFound);
+                    return Err(PieskieoError::NotFound);
                 }
             } else {
                 *dim_guard = Some(vector.len());
@@ -198,13 +198,13 @@ impl VectorIndex {
         filter_meta: Option<HashMap<String, String>>,
     ) -> Result<Vec<VectorSearchResult>> {
         if query.is_empty() {
-            return Err(KaedeDbError::NotFound);
+            return Err(PieskieoError::NotFound);
         }
         {
             let dim_guard = self.dim.read();
             if let Some(dim) = *dim_guard {
                 if query.len() != dim {
-                    return Err(KaedeDbError::NotFound);
+                    return Err(PieskieoError::NotFound);
                 }
             }
         }
@@ -389,7 +389,7 @@ impl VectorIndex {
         let bytes = std::fs::read(path)?;
         // Prefer V2 (with metadata); fallback to V1 for backward compatibility.
         let entries_v2: Result<Vec<(Uuid, Vec<f32>, Option<HashMap<String, String>>)>> =
-            bincode::deserialize(&bytes).map_err(KaedeDbError::from);
+            bincode::deserialize(&bytes).map_err(PieskieoError::from);
         let entries_v1: Option<Vec<(Uuid, Vec<f32>)>> = if entries_v2.is_err() {
             bincode::deserialize(&bytes).ok()
         } else {
@@ -416,7 +416,7 @@ impl VectorIndex {
                 self.insert(id, vec, None)?;
             }
         } else {
-            return Err(KaedeDbError::NotFound);
+            return Err(PieskieoError::NotFound);
         }
         Ok(())
     }

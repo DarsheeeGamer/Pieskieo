@@ -4,8 +4,8 @@ pub mod graph;
 pub mod vector;
 pub mod wal;
 
-pub use engine::KaedeDb;
+pub use engine::PieskieoDb;
 pub use engine::VectorParams;
-pub use error::KaedeDbError;
+pub use error::PieskieoError;
 pub use graph::{Edge, GraphStore};
 pub use vector::{VectorIndex, VectorSearchResult};

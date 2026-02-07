@@ -1,4 +1,4 @@
-use kaededb_core::{KaedeDb, VectorParams};
+use pieskieo_core::{PieskieoDb, VectorParams};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::time::Instant;
 use sysinfo::{Pid, System};
@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
         max_elements: n * 2,
         ..Default::default()
     };
-    let db = KaedeDb::open_with_params(tmp.path(), params)?;
+    let db = PieskieoDb::open_with_params(tmp.path(), params)?;
 
     let mut rng = StdRng::seed_from_u64(42);
     let start = Instant::now();

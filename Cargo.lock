@@ -949,50 +949,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaededb-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bincode",
- "bytes",
- "hnsw_rs",
- "parking_lot",
- "rand 0.8.5",
- "rayon",
- "roaring",
- "serde",
- "serde_cbor",
- "serde_json",
- "sqlparser",
- "sysinfo",
- "tempfile",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "kaededb-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "futures",
- "kaededb-core",
- "rand 0.8.5",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tower 0.4.13",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1255,6 +1211,50 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "pieskieo-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bincode",
+ "bytes",
+ "hnsw_rs",
+ "parking_lot",
+ "rand 0.8.5",
+ "rayon",
+ "roaring",
+ "serde",
+ "serde_cbor",
+ "serde_json",
+ "sqlparser",
+ "sysinfo",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "pieskieo-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "futures",
+ "pieskieo-core",
+ "rand 0.8.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower 0.4.13",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
 
 [[package]]
 name = "pin-project-lite"
