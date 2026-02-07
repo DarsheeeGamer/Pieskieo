@@ -41,19 +41,35 @@ detect_platform() {
 }
 
 fetch_version() {
+  # priority: env PIESKIEO_VERSION -> first arg -> latest API -> fallback
   if [[ -n "${PIESKIEO_VERSION:-}" ]]; then
     echo "${PIESKIEO_VERSION}"
     return
   fi
-  require_cmd curl
-  curl -fsSL https://api.github.com/repos/DarsheeeGamer/Pieskieo/releases/latest \
-    | sed -n 's/ *"tag_name": *"\\(v[^"]*\\)".*/\\1/p' | head -n1
+  if [[ $# -ge 1 && -n "$1" ]]; then
+    echo "$1"
+    return
+  fi
+  if command -v curl >/dev/null 2>&1; then
+    local hdr=()
+    if [[ -n "${GH_TOKEN:-}" ]]; then
+      hdr+=(-H "Authorization: Bearer ${GH_TOKEN}")
+    fi
+    local tag
+    tag=$(curl -fsSL "${hdr[@]}" https://api.github.com/repos/DarsheeeGamer/Pieskieo/releases/latest \
+      | sed -n 's/ *"tag_name": *"\\(v[^"]*\\)".*/\\1/p' | head -n1 || true)
+    if [[ -n "$tag" ]]; then
+      echo "$tag"
+      return
+    fi
+  fi
+  echo "v0.1.2"
 }
 
 main() {
   local platform version prefix tmp zip url bindst
   platform="$(detect_platform)"
-  version="$(fetch_version)"
+  version="$(fetch_version "$@")"
   if [[ -z "$version" ]]; then
     echo "Could not determine latest release version." >&2
     exit 1
