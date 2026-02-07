@@ -34,6 +34,7 @@ struct QueryInput {
     namespace: Option<String>,
     collection: Option<String>,
     table: Option<String>,
+    offset: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -415,6 +416,7 @@ async fn query_docs(
             input.collection.as_deref(),
             &input.filter,
             input.limit.unwrap_or(100),
+            input.offset.unwrap_or(0),
         ));
     }
     Ok(Json(ApiResponse {
@@ -434,6 +436,7 @@ async fn query_rows(
             input.table.as_deref(),
             &input.filter,
             input.limit.unwrap_or(100),
+            input.offset.unwrap_or(0),
         ));
     }
     Ok(Json(ApiResponse {

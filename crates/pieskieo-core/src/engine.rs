@@ -426,8 +426,13 @@ impl PieskieoDb {
         self.get_row_ns(None, None, id)
     }
 
-    pub fn query_docs(&self, filter: &HashMap<String, Value>, limit: usize) -> Vec<(Uuid, Value)> {
-        self.query_docs_ns(None, None, filter, limit)
+    pub fn query_docs(
+        &self,
+        filter: &HashMap<String, Value>,
+        limit: usize,
+        offset: usize,
+    ) -> Vec<(Uuid, Value)> {
+        self.query_docs_ns(None, None, filter, limit, offset)
     }
 
     pub fn query_docs_ns(
@@ -436,12 +441,25 @@ impl PieskieoDb {
         collection: Option<&str>,
         filter: &HashMap<String, Value>,
         limit: usize,
+        offset: usize,
     ) -> Vec<(Uuid, Value)> {
-        self.filter_map(&self.data.read().docs, ns, collection, filter, limit)
+        self.filter_map(
+            &self.data.read().docs,
+            ns,
+            collection,
+            filter,
+            limit,
+            offset,
+        )
     }
 
-    pub fn query_rows(&self, filter: &HashMap<String, Value>, limit: usize) -> Vec<(Uuid, Value)> {
-        self.query_rows_ns(None, None, filter, limit)
+    pub fn query_rows(
+        &self,
+        filter: &HashMap<String, Value>,
+        limit: usize,
+        offset: usize,
+    ) -> Vec<(Uuid, Value)> {
+        self.query_rows_ns(None, None, filter, limit, offset)
     }
 
     pub fn query_rows_ns(
@@ -450,8 +468,9 @@ impl PieskieoDb {
         table: Option<&str>,
         filter: &HashMap<String, Value>,
         limit: usize,
+        offset: usize,
     ) -> Vec<(Uuid, Value)> {
-        self.filter_map(&self.data.read().rows, ns, table, filter, limit)
+        self.filter_map(&self.data.read().rows, ns, table, filter, limit, offset)
     }
 
     pub fn put_vector(&self, id: Uuid, vector: Vec<f32>) -> Result<()> {
@@ -887,20 +906,38 @@ impl PieskieoDb {
         coll: Option<&str>,
         filter: &HashMap<String, Value>,
         limit: usize,
+        offset: usize,
     ) -> Vec<(Uuid, Value)> {
         let mut out = Vec::new();
+        let mut skipped = 0usize;
         match (ns, coll) {
             (Some(ns), Some(c)) => {
                 if let Some(ns_map) = map.get(ns) {
                     if let Some(inner) = ns_map.get(c) {
-                        Self::collect_filtered(self, inner, filter, limit, &mut out);
+                        Self::collect_filtered(
+                            self,
+                            inner,
+                            filter,
+                            limit,
+                            offset,
+                            &mut out,
+                            &mut skipped,
+                        );
                     }
                 }
             }
             (Some(ns), None) => {
                 if let Some(ns_map) = map.get(ns) {
                     for inner in ns_map.values() {
-                        Self::collect_filtered(self, inner, filter, limit, &mut out);
+                        Self::collect_filtered(
+                            self,
+                            inner,
+                            filter,
+                            limit,
+                            offset,
+                            &mut out,
+                            &mut skipped,
+                        );
                         if out.len() >= limit {
                             break;
                         }
@@ -910,7 +947,15 @@ impl PieskieoDb {
             (None, Some(c)) => {
                 for ns_map in map.values() {
                     if let Some(inner) = ns_map.get(c) {
-                        Self::collect_filtered(self, inner, filter, limit, &mut out);
+                        Self::collect_filtered(
+                            self,
+                            inner,
+                            filter,
+                            limit,
+                            offset,
+                            &mut out,
+                            &mut skipped,
+                        );
                         if out.len() >= limit {
                             break;
                         }
@@ -920,7 +965,15 @@ impl PieskieoDb {
             (None, None) => {
                 for ns_map in map.values() {
                     for inner in ns_map.values() {
-                        Self::collect_filtered(self, inner, filter, limit, &mut out);
+                        Self::collect_filtered(
+                            self,
+                            inner,
+                            filter,
+                            limit,
+                            offset,
+                            &mut out,
+                            &mut skipped,
+                        );
                         if out.len() >= limit {
                             break;
                         }
@@ -936,16 +989,24 @@ impl PieskieoDb {
         inner: &BTreeMap<Uuid, Value>,
         filter: &HashMap<String, Value>,
         limit: usize,
+        offset: usize,
         out: &mut Vec<(Uuid, Value)>,
+        skipped: &mut usize,
     ) {
         for (id, v) in inner.iter() {
             if !self.owns(id) {
                 continue;
             }
             if value_matches(v, filter) {
-                out.push((*id, v.clone()));
-                if out.len() >= limit {
-                    return;
+                if *skipped < offset {
+                    *skipped += 1;
+                    continue;
+                }
+                if out.len() < limit {
+                    out.push((*id, v.clone()));
+                    if out.len() >= limit {
+                        return;
+                    }
                 }
             }
         }
