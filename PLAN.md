@@ -27,6 +27,7 @@ Unified multi‑model engine: relational (Postgres‑ish), document (Mongo‑ish
 3) Distributed story: auto-rebalance + follower reads; finish end-to-end WAL tail apply with rate limiting; multi-line CLI + auth retry shipped.  
 4) Benchmarks: publish latency/recall for 768 & 3072 dims; crash/chaos matrix.  
 5) Release: cargo-dist artifacts, checksums, signed releases, docs site.  
+6) Installers: source-build scripts added (`install/install.sh`, `install/install.ps1`); next add prebuilt release assets for Win/Linux/mac.  
 
 ## Security defaults
 - Argon2id hashing; password complexity enforced on create; lockout 5 tries / 15m then 5m block (env tunable).

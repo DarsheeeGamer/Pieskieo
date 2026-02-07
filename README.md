@@ -41,6 +41,11 @@ cargo run -p pieskieo-cli -- --connect pieskieo@localhost --port 8000 -W
 ```
 `-W` prompts for password; use bearer with `-t <token>`. The REPL accepts raw PQL.
 
+## Installers
+- Windows: `pwsh install/install.ps1` (installs to `%ProgramData%\Pieskieo\bin` or `~\.local\bin`)
+- Linux/macOS: `bash install/install.sh` (installs to `/usr/local/bin` or `~/.local/bin`)
+Both scripts build from source with `--release` and copy `pieskieo-server`, `pieskieo`, `load`, `bench`.
+
 ## Key features
 - HNSW ANN with persistence (graph + revmap saved/reloaded).
 - Vector metadata upsert, filter, delete-keys.
