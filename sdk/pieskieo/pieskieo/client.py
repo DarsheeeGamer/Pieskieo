@@ -18,9 +18,17 @@ class PieskieoClient:
         self.client = httpx.Client(timeout=timeout)
 
     # -------- vector ops --------
-    def put_vector(self, vector: List[float], id: Optional[uuid.UUID] = None, meta: Optional[Dict[str, str]] = None) -> uuid.UUID:
+    def put_vector(
+        self,
+        vector: List[float],
+        id: Optional[uuid.UUID] = None,
+        meta: Optional[Dict[str, str]] = None,
+        namespace: Optional[str] = None,
+    ) -> uuid.UUID:
         vec_id = id or uuid.uuid4()
         payload = {"id": str(vec_id), "vector": vector}
+        if namespace:
+            payload["namespace"] = namespace
         if meta is not None:
             payload["meta"] = meta
         r = self.client.post(f"{self.base}/v1/vector", json=payload)
@@ -28,17 +36,31 @@ class PieskieoClient:
         return vec_id
 
     def put_vectors_bulk(self, items: List[Dict]) -> int:
-        # items: [{id?, vector, meta?}]
+        # items: [{id?, vector, meta?, namespace?}]
         normalized = []
         for it in items:
             vid = it.get("id") or str(uuid.uuid4())
-            normalized.append({"id": vid, "vector": it["vector"], "meta": it.get("meta")})
+            norm = {"id": vid, "vector": it["vector"], "meta": it.get("meta")}
+            if it.get("namespace"):
+                norm["namespace"] = it["namespace"]
+            normalized.append(norm)
         r = self.client.post(f"{self.base}/v1/vector/bulk", json={"items": normalized})
         r.raise_for_status()
         return r.json()["data"]
 
-    def search(self, query: List[float], k: int = 10, metric: str = "l2", ef_search: Optional[int] = None, filter_ids=None, filter_meta=None) -> List[VectorHit]:
+    def search(
+        self,
+        query: List[float],
+        k: int = 10,
+        metric: str = "l2",
+        ef_search: Optional[int] = None,
+        filter_ids=None,
+        filter_meta=None,
+        namespace: Optional[str] = None,
+    ) -> List[VectorHit]:
         payload = {"query": query, "k": k, "metric": metric}
+        if namespace:
+            payload["namespace"] = namespace
         if ef_search is not None:
             payload["ef_search"] = ef_search
         if filter_ids:
@@ -68,36 +90,110 @@ class PieskieoClient:
         r.raise_for_status()
 
     # -------- docs / rows --------
-    def put_doc(self, data, id: Optional[uuid.UUID] = None) -> uuid.UUID:
+    def put_doc(
+        self,
+        data,
+        id: Optional[uuid.UUID] = None,
+        namespace: Optional[str] = None,
+        collection: Optional[str] = None,
+    ) -> uuid.UUID:
         doc_id = id or uuid.uuid4()
-        r = self.client.post(f"{self.base}/v1/doc", json={"id": str(doc_id), "data": data})
+        payload = {"id": str(doc_id), "data": data}
+        if namespace:
+            payload["namespace"] = namespace
+        if collection:
+            payload["collection"] = collection
+        r = self.client.post(f"{self.base}/v1/doc", json=payload)
         r.raise_for_status()
         return doc_id
 
-    def get_doc(self, id: uuid.UUID):
-        r = self.client.get(f"{self.base}/v1/doc/{id}")
+    def get_doc(self, id: uuid.UUID, namespace: Optional[str] = None, collection: Optional[str] = None):
+        params = {}
+        if namespace:
+            params["namespace"] = namespace
+        if collection:
+            params["collection"] = collection
+        r = self.client.get(f"{self.base}/v1/doc/{id}", params=params or None)
         r.raise_for_status()
         return r.json()["data"]
 
-    def delete_doc(self, id: uuid.UUID):
-        r = self.client.delete(f"{self.base}/v1/doc/{id}")
+    def delete_doc(self, id: uuid.UUID, namespace: Optional[str] = None, collection: Optional[str] = None):
+        params = {}
+        if namespace:
+            params["namespace"] = namespace
+        if collection:
+            params["collection"] = collection
+        r = self.client.delete(f"{self.base}/v1/doc/{id}", params=params or None)
         r.raise_for_status()
 
     # -------- rows --------
-    def put_row(self, data, id: Optional[uuid.UUID] = None) -> uuid.UUID:
+    def put_row(
+        self,
+        data,
+        id: Optional[uuid.UUID] = None,
+        namespace: Optional[str] = None,
+        table: Optional[str] = None,
+    ) -> uuid.UUID:
         row_id = id or uuid.uuid4()
-        r = self.client.post(f"{self.base}/v1/row", json={"id": str(row_id), "data": data})
+        payload = {"id": str(row_id), "data": data}
+        if namespace:
+            payload["namespace"] = namespace
+        if table:
+            payload["table"] = table
+        r = self.client.post(f"{self.base}/v1/row", json=payload)
         r.raise_for_status()
         return row_id
 
-    def get_row(self, id: uuid.UUID):
-        r = self.client.get(f"{self.base}/v1/row/{id}")
+    def get_row(self, id: uuid.UUID, namespace: Optional[str] = None, table: Optional[str] = None):
+        params = {}
+        if namespace:
+            params["namespace"] = namespace
+        if table:
+            params["table"] = table
+        r = self.client.get(f"{self.base}/v1/row/{id}", params=params or None)
         r.raise_for_status()
         return r.json()["data"]
 
-    def delete_row(self, id: uuid.UUID):
-        r = self.client.delete(f"{self.base}/v1/row/{id}")
+    def delete_row(self, id: uuid.UUID, namespace: Optional[str] = None, table: Optional[str] = None):
+        params = {}
+        if namespace:
+            params["namespace"] = namespace
+        if table:
+            params["table"] = table
+        r = self.client.delete(f"{self.base}/v1/row/{id}", params=params or None)
         r.raise_for_status()
+
+    def query_docs(
+        self,
+        filter: Dict,
+        limit: int = 100,
+        namespace: Optional[str] = None,
+        collection: Optional[str] = None,
+    ) -> List:
+        payload = {"filter": filter, "limit": limit}
+        if namespace:
+            payload["namespace"] = namespace
+        if collection:
+            payload["collection"] = collection
+        r = self.client.post(f"{self.base}/v1/doc/query", json=payload)
+        r.raise_for_status()
+        return r.json()["data"]
+
+    def query_rows(
+        self,
+        filter: Dict,
+        limit: int = 100,
+        namespace: Optional[str] = None,
+        table: Optional[str] = None,
+    ) -> List:
+        payload = {"filter": filter, "limit": limit}
+        if namespace:
+            payload["namespace"] = namespace
+        if table:
+            payload["table"] = table
+        r = self.client.post(f"{self.base}/v1/row/query", json=payload)
+        r.raise_for_status()
+        return r.json()["data"]
 
     # -------- graph --------
     def add_edge(self, src: uuid.UUID, dst: uuid.UUID, weight: float = 1.0):

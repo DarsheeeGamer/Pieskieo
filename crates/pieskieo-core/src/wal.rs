@@ -11,10 +11,22 @@ pub enum RecordKind {
         family: DataFamily,
         key: Uuid,
         payload: Vec<u8>,
+        #[serde(default)]
+        namespace: Option<String>,
+        #[serde(default)]
+        collection: Option<String>,
+        #[serde(default)]
+        table: Option<String>,
     },
     Delete {
         family: DataFamily,
         key: Uuid,
+        #[serde(default)]
+        namespace: Option<String>,
+        #[serde(default)]
+        collection: Option<String>,
+        #[serde(default)]
+        table: Option<String>,
     },
     AddEdge {
         src: Uuid,

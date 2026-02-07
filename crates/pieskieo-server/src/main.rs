@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     routing::{delete, get, post},
     Json, Router,
 };
@@ -23,12 +23,17 @@ struct AppState {
 struct DocInput {
     id: Option<Uuid>,
     data: serde_json::Value,
+    namespace: Option<String>,
+    collection: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct QueryInput {
     filter: HashMap<String, serde_json::Value>,
     limit: Option<usize>,
+    namespace: Option<String>,
+    collection: Option<String>,
+    table: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -36,6 +41,7 @@ struct VectorInput {
     id: Uuid,
     vector: Vec<f32>,
     meta: Option<HashMap<String, String>>,
+    namespace: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -57,6 +63,8 @@ struct VectorMetaDeleteInput {
 struct RowInput {
     id: Option<Uuid>,
     data: serde_json::Value,
+    namespace: Option<String>,
+    table: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -67,6 +75,7 @@ struct VectorSearchInput {
     filter_ids: Option<Vec<Uuid>>,
     ef_search: Option<usize>,
     filter_meta: Option<HashMap<String, String>>,
+    namespace: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -87,6 +96,13 @@ struct EdgeInput {
 struct ApiResponse<T> {
     ok: bool,
     data: T,
+}
+
+#[derive(Deserialize)]
+struct NsParams {
+    namespace: Option<String>,
+    collection: Option<String>,
+    table: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -328,7 +344,12 @@ async fn put_doc(
     state
         .pool
         .shard_for(&id)
-        .put_doc(id, input.data)
+        .put_doc_ns(
+            input.namespace.as_deref(),
+            input.collection.as_deref(),
+            id,
+            input.data,
+        )
         .map_err(ApiError::from)?;
     Ok(Json(ApiResponse { ok: true, data: id }))
 }
@@ -336,11 +357,12 @@ async fn put_doc(
 async fn get_doc(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    Query(ns): Query<NsParams>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     let doc = state
         .pool
         .shard_for(&id)
-        .get_doc(&id)
+        .get_doc_ns(ns.namespace.as_deref(), ns.collection.as_deref(), &id)
         .ok_or(ApiError::NotFound)?;
     Ok(Json(ApiResponse {
         ok: true,
@@ -351,11 +373,12 @@ async fn get_doc(
 async fn delete_doc(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    Query(ns): Query<NsParams>,
 ) -> Result<Json<ApiResponse<&'static str>>, ApiError> {
     state
         .pool
         .shard_for(&id)
-        .delete_doc(&id)
+        .delete_doc_ns(ns.namespace.as_deref(), ns.collection.as_deref(), &id)
         .map_err(ApiError::from)?;
     Ok(Json(ApiResponse {
         ok: true,
@@ -371,7 +394,12 @@ async fn put_row(
     state
         .pool
         .shard_for(&id)
-        .put_row(id, &input.data)
+        .put_row_ns(
+            input.namespace.as_deref(),
+            input.table.as_deref(),
+            id,
+            &input.data,
+        )
         .map_err(ApiError::from)?;
     Ok(Json(ApiResponse { ok: true, data: id }))
 }
@@ -382,9 +410,17 @@ async fn query_docs(
 ) -> Result<Json<ApiResponse<Vec<(Uuid, serde_json::Value)>>>, ApiError> {
     let mut hits = Vec::new();
     for shard in state.pool.each() {
-        hits.extend(shard.query_docs(&input.filter, input.limit.unwrap_or(100)));
+        hits.extend(shard.query_docs_ns(
+            input.namespace.as_deref(),
+            input.collection.as_deref(),
+            &input.filter,
+            input.limit.unwrap_or(100),
+        ));
     }
-    Ok(Json(ApiResponse { ok: true, data: hits }))
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: hits,
+    }))
 }
 
 async fn query_rows(
@@ -393,19 +429,28 @@ async fn query_rows(
 ) -> Result<Json<ApiResponse<Vec<(Uuid, serde_json::Value)>>>, ApiError> {
     let mut hits = Vec::new();
     for shard in state.pool.each() {
-        hits.extend(shard.query_rows(&input.filter, input.limit.unwrap_or(100)));
+        hits.extend(shard.query_rows_ns(
+            input.namespace.as_deref(),
+            input.table.as_deref(),
+            &input.filter,
+            input.limit.unwrap_or(100),
+        ));
     }
-    Ok(Json(ApiResponse { ok: true, data: hits }))
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: hits,
+    }))
 }
 
 async fn get_row(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    Query(ns): Query<NsParams>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, ApiError> {
     let row = state
         .pool
         .shard_for(&id)
-        .get_row(&id)
+        .get_row_ns(ns.namespace.as_deref(), ns.table.as_deref(), &id)
         .ok_or(ApiError::NotFound)?;
     Ok(Json(ApiResponse {
         ok: true,
@@ -416,11 +461,12 @@ async fn get_row(
 async fn delete_row(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    Query(ns): Query<NsParams>,
 ) -> Result<Json<ApiResponse<&'static str>>, ApiError> {
     state
         .pool
         .shard_for(&id)
-        .delete_row(&id)
+        .delete_row_ns(ns.namespace.as_deref(), ns.table.as_deref(), &id)
         .map_err(ApiError::from)?;
     Ok(Json(ApiResponse {
         ok: true,
@@ -435,7 +481,12 @@ async fn put_vector(
     state
         .pool
         .shard_for(&input.id)
-        .put_vector_with_meta(input.id, input.vector, input.meta)
+        .put_vector_with_meta_ns(
+            input.namespace.as_deref(),
+            input.id,
+            input.vector,
+            input.meta,
+        )
         .map_err(ApiError::from)?;
     Ok(Json(ApiResponse {
         ok: true,
@@ -452,7 +503,12 @@ async fn put_vector_bulk(
         state
             .pool
             .shard_for(&item.id)
-            .put_vector_with_meta(item.id, item.vector.clone(), item.meta.clone())
+            .put_vector_with_meta_ns(
+                item.namespace.as_deref(),
+                item.id,
+                item.vector.clone(),
+                item.meta.clone(),
+            )
             .map_err(ApiError::from)?;
         stored += 1;
     }
@@ -549,7 +605,13 @@ async fn search_vector(
         .map(|shard| {
             let q = input.query.clone();
             let filter = input.filter_meta.clone();
-            tokio::task::spawn_blocking(move || shard.search_vector_metric(&q, k, metric, filter))
+            let ns = input.namespace.clone();
+            tokio::task::spawn_blocking(move || match ns {
+                Some(ref ns) => {
+                    shard.search_vector_metric_ns(Some(ns.as_str()), &q, k, metric, filter)
+                }
+                None => shard.search_vector_metric(&q, k, metric, filter),
+            })
         })
         .collect::<Vec<_>>();
     let mut all_hits = Vec::new();
@@ -668,7 +730,10 @@ async fn list_bfs(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<pieskieo_core::Edge>>>, ApiError> {
     let edges = state.pool.shard_for(&id).bfs(id, 100);
-    Ok(Json(ApiResponse { ok: true, data: edges }))
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: edges,
+    }))
 }
 
 async fn list_dfs(
@@ -676,7 +741,10 @@ async fn list_dfs(
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiResponse<Vec<pieskieo_core::Edge>>>, ApiError> {
     let edges = state.pool.shard_for(&id).dfs(id, 100);
-    Ok(Json(ApiResponse { ok: true, data: edges }))
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: edges,
+    }))
 }
 
 async fn which_shard(

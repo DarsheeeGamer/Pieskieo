@@ -12,19 +12,24 @@ use uuid::Uuid;
 
 #[derive(Default)]
 pub(crate) struct Collections {
-    rows: BTreeMap<Uuid, Value>,
-    docs: BTreeMap<Uuid, Value>,
+    // namespace -> collection/table -> (id -> payload)
+    rows: HashMap<String, HashMap<String, BTreeMap<Uuid, Value>>>,
+    docs: HashMap<String, HashMap<String, BTreeMap<Uuid, Value>>>,
 }
 
 pub struct PieskieoDb {
     path: PathBuf,
     pub(crate) wal: RwLock<Wal>,
     pub(crate) data: Arc<RwLock<Collections>>,
-    pub(crate) vectors: VectorIndex,
+    // namespace -> vector index
+    pub(crate) vectors: Arc<RwLock<HashMap<String, Arc<VectorIndex>>>>,
+    // vector id -> namespace (for auto-link + delete convenience)
+    pub(crate) vector_ns: Arc<RwLock<HashMap<Uuid, String>>>,
     pub(crate) graph: GraphStore,
     link_top_k: usize,
     shard_id: usize,
     shard_total: usize,
+    default_params: VectorParams,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,11 +40,41 @@ pub struct UpsertDoc {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct VecWalRecord {
+    #[serde(default)]
+    namespace: Option<String>,
     vector: Vec<f32>,
     meta: Option<HashMap<String, String>>,
 }
 
 impl PieskieoDb {
+    fn ns(ns: Option<&str>) -> String {
+        ns.unwrap_or("default").to_string()
+    }
+
+    fn col(col: Option<&str>) -> String {
+        col.unwrap_or("default").to_string()
+    }
+
+    fn default_ns() -> String {
+        "default".to_string()
+    }
+
+    /// Fetch existing index for namespace or create one with default params.
+    fn vector_index(&self, ns: &str) -> Arc<VectorIndex> {
+        let mut guard = self.vectors.write();
+        guard
+            .entry(ns.to_string())
+            .or_insert_with(|| {
+                Arc::new(VectorIndex::with_params(
+                    self.default_params.metric,
+                    self.default_params.ef_construction,
+                    self.default_params.ef_search,
+                    self.default_params.max_elements,
+                ))
+            })
+            .clone()
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         Self::open_with_params(path, VectorParams::default())
     }
@@ -48,12 +83,18 @@ impl PieskieoDb {
         let path = path.as_ref().to_path_buf();
         let wal = Wal::open(&path)?;
         let data = Arc::new(RwLock::new(Collections::default()));
-        let vectors = VectorIndex::with_params(
-            params.metric,
-            params.ef_construction,
-            params.ef_search,
-            params.max_elements,
+        let mut vecs = HashMap::new();
+        vecs.insert(
+            Self::default_ns(),
+            Arc::new(VectorIndex::with_params(
+                params.metric,
+                params.ef_construction,
+                params.ef_search,
+                params.max_elements,
+            )),
         );
+        let vectors = Arc::new(RwLock::new(vecs));
+        let vector_ns = Arc::new(RwLock::new(HashMap::new()));
         let graph = GraphStore::new();
 
         for rec in wal.replay()? {
@@ -62,22 +103,56 @@ impl PieskieoDb {
                     family,
                     key,
                     payload,
+                    namespace,
+                    collection,
+                    table,
                 } => match family {
                     DataFamily::Doc => {
+                        let ns = namespace.unwrap_or_else(Self::default_ns);
+                        let col = collection.unwrap_or_else(Self::default_ns);
                         let v: Value = serde_json::from_slice(&payload)?;
-                        data.write().docs.insert(key, v);
+                        data.write()
+                            .docs
+                            .entry(ns)
+                            .or_default()
+                            .entry(col)
+                            .or_default()
+                            .insert(key, v);
                     }
                     DataFamily::Row => {
+                        let ns = namespace.unwrap_or_else(Self::default_ns);
+                        let table = table.unwrap_or_else(Self::default_ns);
                         let v: Value = serde_json::from_slice(&payload)?;
-                        data.write().rows.insert(key, v);
+                        data.write()
+                            .rows
+                            .entry(ns)
+                            .or_default()
+                            .entry(table)
+                            .or_default()
+                            .insert(key, v);
                     }
                     DataFamily::Vec => match bincode::deserialize::<VecWalRecord>(&payload) {
                         Ok(rec) => {
-                            let _ = vectors.insert(key, rec.vector, rec.meta);
+                            let ns = rec.namespace.unwrap_or_else(Self::default_ns);
+                            let mut guard = vectors.write();
+                            let entry = guard.entry(ns.clone()).or_insert_with(|| {
+                                Arc::new(VectorIndex::with_params(
+                                    params.metric,
+                                    params.ef_construction,
+                                    params.ef_search,
+                                    params.max_elements,
+                                ))
+                            });
+                            let _ = entry.insert(key, rec.vector, rec.meta);
+                            vector_ns.write().insert(key, ns);
                         }
                         Err(_) => {
                             let vec: Vec<f32> = bincode::deserialize(&payload)?;
-                            let _ = vectors.insert(key, vec, None);
+                            let guard = vectors.write();
+                            if let Some(idx) = guard.get(Self::default_ns().as_str()) {
+                                let _ = idx.insert(key, vec, None);
+                                vector_ns.write().insert(key, Self::default_ns());
+                            }
                         }
                     },
                     DataFamily::Graph => {
@@ -85,15 +160,37 @@ impl PieskieoDb {
                         graph.add_edge(edge.src, edge.dst, edge.weight);
                     }
                 },
-                RecordKind::Delete { family, key } => match family {
+                RecordKind::Delete {
+                    family,
+                    key,
+                    namespace,
+                    collection,
+                    table,
+                } => match family {
                     DataFamily::Doc => {
-                        data.write().docs.remove(&key);
+                        let ns = namespace.unwrap_or_else(Self::default_ns);
+                        let col = collection.unwrap_or_else(Self::default_ns);
+                        if let Some(map) = data.write().docs.get_mut(&ns) {
+                            if let Some(c) = map.get_mut(&col) {
+                                c.remove(&key);
+                            }
+                        }
                     }
                     DataFamily::Row => {
-                        data.write().rows.remove(&key);
+                        let ns = namespace.unwrap_or_else(Self::default_ns);
+                        let tbl = table.unwrap_or_else(Self::default_ns);
+                        if let Some(map) = data.write().rows.get_mut(&ns) {
+                            if let Some(t) = map.get_mut(&tbl) {
+                                t.remove(&key);
+                            }
+                        }
                     }
                     DataFamily::Vec => {
-                        vectors.delete(&key);
+                        let ns = namespace.unwrap_or_else(Self::default_ns);
+                        if let Some(idx) = vectors.write().get(&ns) {
+                            idx.delete(&key);
+                            vector_ns.write().remove(&key);
+                        }
                     }
                     DataFamily::Graph => {}
                 },
@@ -103,11 +200,51 @@ impl PieskieoDb {
             }
         }
 
-        // Optional fast reload of vectors from snapshot.
-        let snapshot = path.join("vectors.snapshot");
-        if snapshot.exists() {
-            let _ = vectors.load_snapshot(&snapshot);
-            let _ = vectors.rebuild_hnsw();
+        // Optional fast reload of vectors from per-namespace snapshots.
+        let snap_dir = path.join("vectors");
+        if snap_dir.exists() && snap_dir.is_dir() {
+            for entry in std::fs::read_dir(&snap_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("snapshot") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        let ns = stem.to_string();
+                        let idx = {
+                            let mut guard = vectors.write();
+                            guard
+                                .entry(ns.clone())
+                                .or_insert_with(|| {
+                                    Arc::new(VectorIndex::with_params(
+                                        params.metric,
+                                        params.ef_construction,
+                                        params.ef_search,
+                                        params.max_elements,
+                                    ))
+                                })
+                                .clone()
+                        };
+                        let _ = idx.load_snapshot(&path);
+                        let hnsw = snap_dir.join(format!("{ns}.hnsw"));
+                        let _ = idx.load_hnsw(&hnsw);
+                        let _ = idx.rebuild_hnsw();
+                        for id in idx.inner.read().keys() {
+                            vector_ns.write().insert(*id, ns.clone());
+                        }
+                    }
+                }
+            }
+        } else {
+            // backwards compatibility: single-snapshot file
+            let snapshot = path.join("vectors.snapshot");
+            if snapshot.exists() {
+                if let Some(idx) = vectors.write().get(&Self::default_ns()).cloned() {
+                    let _ = idx.load_snapshot(&snapshot);
+                    let _ = idx.rebuild_hnsw();
+                    for id in idx.inner.read().keys() {
+                        vector_ns.write().insert(*id, Self::default_ns());
+                    }
+                }
+            }
         }
 
         Ok(Self {
@@ -115,14 +252,22 @@ impl PieskieoDb {
             wal: RwLock::new(wal),
             data,
             vectors,
+            vector_ns,
             graph,
             link_top_k: params.link_top_k,
             shard_id: params.shard_id,
             shard_total: params.shard_total.max(1),
+            default_params: params,
         })
     }
 
-    pub fn put_doc(&self, id: Uuid, json: Value) -> Result<()> {
+    pub fn put_doc_ns(
+        &self,
+        ns: Option<&str>,
+        collection: Option<&str>,
+        id: Uuid,
+        json: Value,
+    ) -> Result<()> {
         if !self.owns(&id) {
             return Err(PieskieoError::WrongShard);
         }
@@ -131,28 +276,64 @@ impl PieskieoDb {
             family: DataFamily::Doc,
             key: id,
             payload,
+            namespace: Some(Self::ns(ns)),
+            collection: Some(Self::col(collection)),
+            table: None,
         })?;
-        self.data.write().docs.insert(id, json);
+        self.data
+            .write()
+            .docs
+            .entry(Self::ns(ns))
+            .or_default()
+            .entry(Self::col(collection))
+            .or_default()
+            .insert(id, json);
         Ok(())
     }
 
-    pub fn delete_doc(&self, id: &Uuid) -> Result<()> {
+    pub fn put_doc(&self, id: Uuid, json: Value) -> Result<()> {
+        self.put_doc_ns(None, None, id, json)
+    }
+
+    pub fn delete_doc_ns(
+        &self,
+        ns: Option<&str>,
+        collection: Option<&str>,
+        id: &Uuid,
+    ) -> Result<()> {
         if !self.owns(id) {
             return Err(PieskieoError::WrongShard);
         }
         self.append_record(&RecordKind::Delete {
             family: DataFamily::Doc,
             key: *id,
+            namespace: Some(Self::ns(ns)),
+            collection: Some(Self::col(collection)),
+            table: None,
         })?;
-        self.data.write().docs.remove(id);
+        if let Some(ns_map) = self.data.write().docs.get_mut(&Self::ns(ns)) {
+            if let Some(col_map) = ns_map.get_mut(&Self::col(collection)) {
+                col_map.remove(id);
+            }
+        }
         Ok(())
+    }
+
+    pub fn delete_doc(&self, id: &Uuid) -> Result<()> {
+        self.delete_doc_ns(None, None, id)
     }
 
     pub fn update_doc(&self, id: Uuid, json: Value) -> Result<()> {
         self.put_doc(id, json)
     }
 
-    pub fn put_row<T: Serialize>(&self, id: Uuid, row: &T) -> Result<()> {
+    pub fn put_row_ns<T: Serialize>(
+        &self,
+        ns: Option<&str>,
+        table: Option<&str>,
+        id: Uuid,
+        row: &T,
+    ) -> Result<()> {
         if !self.owns(&id) {
             return Err(PieskieoError::WrongShard);
         }
@@ -162,51 +343,123 @@ impl PieskieoDb {
             family: DataFamily::Row,
             key: id,
             payload,
+            namespace: Some(Self::ns(ns)),
+            table: Some(Self::col(table)),
+            collection: None,
         })?;
-        self.data.write().rows.insert(id, json);
+        self.data
+            .write()
+            .rows
+            .entry(Self::ns(ns))
+            .or_default()
+            .entry(Self::col(table))
+            .or_default()
+            .insert(id, json);
         Ok(())
     }
 
-    pub fn delete_row(&self, id: &Uuid) -> Result<()> {
+    pub fn put_row<T: Serialize>(&self, id: Uuid, row: &T) -> Result<()> {
+        self.put_row_ns(None, None, id, row)
+    }
+
+    pub fn delete_row_ns(&self, ns: Option<&str>, table: Option<&str>, id: &Uuid) -> Result<()> {
         if !self.owns(id) {
             return Err(PieskieoError::WrongShard);
         }
         self.append_record(&RecordKind::Delete {
             family: DataFamily::Row,
             key: *id,
+            namespace: Some(Self::ns(ns)),
+            table: Some(Self::col(table)),
+            collection: None,
         })?;
-        self.data.write().rows.remove(id);
+        if let Some(ns_map) = self.data.write().rows.get_mut(&Self::ns(ns)) {
+            if let Some(tbl_map) = ns_map.get_mut(&Self::col(table)) {
+                tbl_map.remove(id);
+            }
+        }
         Ok(())
+    }
+
+    pub fn delete_row(&self, id: &Uuid) -> Result<()> {
+        self.delete_row_ns(None, None, id)
     }
 
     pub fn update_row<T: Serialize>(&self, id: Uuid, row: &T) -> Result<()> {
         self.put_row(id, row)
     }
 
-    pub fn get_doc(&self, id: &Uuid) -> Option<Value> {
+    pub fn get_doc_ns(
+        &self,
+        ns: Option<&str>,
+        collection: Option<&str>,
+        id: &Uuid,
+    ) -> Option<Value> {
         if !self.owns(id) {
             return None;
         }
-        self.data.read().docs.get(id).cloned()
+        self.data
+            .read()
+            .docs
+            .get(&Self::ns(ns))
+            .and_then(|m| m.get(&Self::col(collection)))
+            .and_then(|m| m.get(id).cloned())
+    }
+
+    pub fn get_doc(&self, id: &Uuid) -> Option<Value> {
+        self.get_doc_ns(None, None, id)
+    }
+
+    pub fn get_row_ns(&self, ns: Option<&str>, table: Option<&str>, id: &Uuid) -> Option<Value> {
+        if !self.owns(id) {
+            return None;
+        }
+        self.data
+            .read()
+            .rows
+            .get(&Self::ns(ns))
+            .and_then(|m| m.get(&Self::col(table)))
+            .and_then(|m| m.get(id).cloned())
     }
 
     pub fn get_row(&self, id: &Uuid) -> Option<Value> {
-        if !self.owns(id) {
-            return None;
-        }
-        self.data.read().rows.get(id).cloned()
+        self.get_row_ns(None, None, id)
     }
 
     pub fn query_docs(&self, filter: &HashMap<String, Value>, limit: usize) -> Vec<(Uuid, Value)> {
-        self.filter_map(&self.data.read().docs, filter, limit)
+        self.query_docs_ns(None, None, filter, limit)
+    }
+
+    pub fn query_docs_ns(
+        &self,
+        ns: Option<&str>,
+        collection: Option<&str>,
+        filter: &HashMap<String, Value>,
+        limit: usize,
+    ) -> Vec<(Uuid, Value)> {
+        self.filter_map(&self.data.read().docs, ns, collection, filter, limit)
     }
 
     pub fn query_rows(&self, filter: &HashMap<String, Value>, limit: usize) -> Vec<(Uuid, Value)> {
-        self.filter_map(&self.data.read().rows, filter, limit)
+        self.query_rows_ns(None, None, filter, limit)
+    }
+
+    pub fn query_rows_ns(
+        &self,
+        ns: Option<&str>,
+        table: Option<&str>,
+        filter: &HashMap<String, Value>,
+        limit: usize,
+    ) -> Vec<(Uuid, Value)> {
+        self.filter_map(&self.data.read().rows, ns, table, filter, limit)
     }
 
     pub fn put_vector(&self, id: Uuid, vector: Vec<f32>) -> Result<()> {
-        self.put_vector_with_meta(id, vector, None)
+        self.put_vector_with_meta_ns(None, id, vector, None)
+    }
+
+    pub fn put_vector_ns(&self, ns: Option<&str>, id: Uuid, vector: Vec<f32>) -> Result<()> {
+        self.put_vector_with_meta_ns(ns, id, vector, None)
     }
 
     pub fn put_vector_with_meta(
@@ -215,10 +468,22 @@ impl PieskieoDb {
         vector: Vec<f32>,
         meta: Option<HashMap<String, String>>,
     ) -> Result<()> {
+        self.put_vector_with_meta_ns(None, id, vector, meta)
+    }
+
+    pub fn put_vector_with_meta_ns(
+        &self,
+        ns: Option<&str>,
+        id: Uuid,
+        vector: Vec<f32>,
+        meta: Option<HashMap<String, String>>,
+    ) -> Result<()> {
         if !self.owns(&id) {
             return Err(PieskieoError::WrongShard);
         }
+        let namespace = Self::ns(ns);
         let payload = bincode::serialize(&VecWalRecord {
+            namespace: Some(namespace.clone()),
             vector: vector.clone(),
             meta: meta.clone(),
         })?;
@@ -226,17 +491,27 @@ impl PieskieoDb {
             family: DataFamily::Vec,
             key: id,
             payload,
+            namespace: Some(namespace.clone()),
+            collection: None,
+            table: None,
         })?;
-        self.vectors.insert(id, vector, meta)?;
-        self.auto_link_neighbors(id);
+        let idx = self.vector_index(&namespace);
+        idx.insert(id, vector, meta)?;
+        self.vector_ns.write().insert(id, namespace.clone());
+        self.auto_link_neighbors(id, &namespace);
         Ok(())
     }
 
     /// Merge or set metadata for an existing vector without changing the embedding.
     pub fn update_vector_meta(&self, id: Uuid, meta_patch: HashMap<String, String>) -> Result<()> {
+        let ns = {
+            let map = self.vector_ns.read();
+            map.get(&id).cloned().unwrap_or_else(Self::default_ns)
+        };
+        let idx = self.vector_index(&ns);
         let (vector, new_meta) = {
-            let data = self.vectors.inner.read();
-            let meta = self.vectors.meta.read();
+            let data = idx.inner.read();
+            let meta = idx.meta.read();
             let Some(vec) = data.get(&id).cloned() else {
                 return Err(PieskieoError::NotFound);
             };
@@ -251,8 +526,8 @@ impl PieskieoDb {
             };
             (vec, merged)
         };
-        // reuse vector write path to persist WAL + update meta; avoid neighbor relink to save work
         let payload = bincode::serialize(&VecWalRecord {
+            namespace: Some(ns.clone()),
             vector: vector.clone(),
             meta: Some(new_meta.clone()),
         })?;
@@ -260,8 +535,11 @@ impl PieskieoDb {
             family: DataFamily::Vec,
             key: id,
             payload,
+            namespace: Some(ns.clone()),
+            collection: None,
+            table: None,
         })?;
-        self.vectors.insert(id, vector, Some(new_meta))?;
+        idx.insert(id, vector, Some(new_meta))?;
         Ok(())
     }
 
@@ -273,29 +551,43 @@ impl PieskieoDb {
         if !self.owns(id) {
             return Err(PieskieoError::WrongShard);
         }
+        let ns = {
+            let map = self.vector_ns.read();
+            map.get(id).cloned().unwrap_or_else(Self::default_ns)
+        };
         self.append_record(&RecordKind::Delete {
             family: DataFamily::Vec,
             key: *id,
+            namespace: Some(ns.clone()),
+            collection: None,
+            table: None,
         })?;
-        self.vectors.delete(id);
+        if let Some(idx) = self.vectors.read().get(&ns) {
+            idx.delete(id);
+        }
+        self.vector_ns.write().remove(id);
         Ok(())
     }
 
-    fn auto_link_neighbors(&self, id: Uuid) {
+    fn auto_link_neighbors(&self, id: Uuid, ns: &str) {
         if self.link_top_k == 0 {
             return;
         }
-        let vector = {
-            let guard = self.vectors.inner.read();
-            guard.get(&id).cloned()
-        };
+        let vector = self
+            .vectors
+            .read()
+            .get(ns)
+            .and_then(|idx| idx.inner.read().get(&id).cloned());
         let Some(vector) = vector else {
             return;
         };
-        let mut hits = match self
-            .vectors
-            .search_ann_filtered(&vector, self.link_top_k + 1, None)
-        {
+        let mut hits = match self.search_vector_metric_ns(
+            Some(ns),
+            &vector,
+            self.link_top_k + 1,
+            self.default_params.metric,
+            None,
+        ) {
             Ok(h) => h,
             Err(_) => return,
         };
@@ -312,7 +604,7 @@ impl PieskieoDb {
         query: &[f32],
         k: usize,
     ) -> Result<Vec<crate::vector::VectorSearchResult>> {
-        self.vectors.search(query, k)
+        self.search_vector_metric(query, k, self.default_params.metric, None)
     }
 
     pub fn search_vector_metric(
@@ -322,28 +614,68 @@ impl PieskieoDb {
         metric: crate::vector::VectorMetric,
         filter_meta: Option<HashMap<String, String>>,
     ) -> Result<Vec<crate::vector::VectorSearchResult>> {
+        // search across all namespaces and merge top-k
+        let mut all = Vec::new();
+        for (_ns, idx) in self.vectors.read().iter() {
+            let local = crate::vector::VectorIndex::from_shared(
+                idx.inner.clone(),
+                idx.dim.clone(),
+                metric,
+                idx.hnsw.clone(),
+                idx.owned_store.clone(),
+                idx.id_map.clone(),
+                idx.rev_map.clone(),
+                idx.next_id.clone(),
+                idx.tombstones.clone(),
+                std::sync::atomic::AtomicUsize::new(
+                    idx.ef_construction
+                        .load(std::sync::atomic::Ordering::SeqCst),
+                ),
+                std::sync::atomic::AtomicUsize::new(
+                    idx.ef_search.load(std::sync::atomic::Ordering::SeqCst),
+                ),
+                idx.max_elements,
+                idx.meta.clone(),
+            );
+            let hits = local.search_ann_filtered(query, k, filter_meta.clone())?;
+            for h in hits {
+                all.push(h);
+            }
+        }
+        all.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        all.truncate(k);
+        Ok(all)
+    }
+
+    pub fn search_vector_metric_ns(
+        &self,
+        ns: Option<&str>,
+        query: &[f32],
+        k: usize,
+        metric: crate::vector::VectorMetric,
+        filter_meta: Option<HashMap<String, String>>,
+    ) -> Result<Vec<crate::vector::VectorSearchResult>> {
+        let namespace = Self::ns(ns);
+        let idx = self.vector_index(&namespace);
         let local = crate::vector::VectorIndex::from_shared(
-            self.vectors.inner.clone(),
-            self.vectors.dim.clone(),
+            idx.inner.clone(),
+            idx.dim.clone(),
             metric,
-            self.vectors.hnsw.clone(),
-            self.vectors.owned_store.clone(),
-            self.vectors.id_map.clone(),
-            self.vectors.rev_map.clone(),
-            self.vectors.next_id.clone(),
-            self.vectors.tombstones.clone(),
+            idx.hnsw.clone(),
+            idx.owned_store.clone(),
+            idx.id_map.clone(),
+            idx.rev_map.clone(),
+            idx.next_id.clone(),
+            idx.tombstones.clone(),
             std::sync::atomic::AtomicUsize::new(
-                self.vectors
-                    .ef_construction
+                idx.ef_construction
                     .load(std::sync::atomic::Ordering::SeqCst),
             ),
             std::sync::atomic::AtomicUsize::new(
-                self.vectors
-                    .ef_search
-                    .load(std::sync::atomic::Ordering::SeqCst),
+                idx.ef_search.load(std::sync::atomic::Ordering::SeqCst),
             ),
-            self.vectors.max_elements,
-            self.vectors.meta.clone(),
+            idx.max_elements,
+            idx.meta.clone(),
         );
         local.search_ann_filtered(query, k, filter_meta)
     }
@@ -357,6 +689,9 @@ impl PieskieoDb {
             family: DataFamily::Graph,
             key: src,
             payload,
+            namespace: None,
+            collection: None,
+            table: None,
         })?;
         self.graph.add_edge(src, dst, weight);
         Ok(())
@@ -375,28 +710,47 @@ impl PieskieoDb {
     }
 
     pub fn rebuild_vectors(&self) -> Result<()> {
-        self.vectors.rebuild_hnsw()
+        for idx in self.vectors.read().values() {
+            idx.rebuild_hnsw()?;
+        }
+        Ok(())
     }
 
     pub fn get_vector(&self, id: &Uuid) -> Option<(Vec<f32>, Option<HashMap<String, String>>)> {
-        let vec = self.vectors.inner.read().get(id).cloned()?;
-        let meta = self.vectors.meta.read().get(id).cloned();
+        let ns = self
+            .vector_ns
+            .read()
+            .get(id)
+            .cloned()
+            .unwrap_or_else(Self::default_ns);
+        let idx = self.vector_index(&ns);
+        let vec = idx.inner.read().get(id).cloned()?;
+        let meta = idx.meta.read().get(id).cloned();
         Some((vec, meta))
     }
 
     pub fn save_vector_snapshot(&self) -> Result<()> {
-        let snap = self.path.join("vectors.snapshot");
-        self.vectors.save_snapshot(&snap)?;
-        let hnsw = self.path.join("hnsw.bin");
-        self.vectors.save_hnsw(&hnsw)
+        let snap_dir = self.path.join("vectors");
+        std::fs::create_dir_all(&snap_dir)?;
+        for (ns, idx) in self.vectors.read().iter() {
+            let snap = snap_dir.join(format!("{ns}.snapshot"));
+            idx.save_snapshot(&snap)?;
+            let hnsw = snap_dir.join(format!("{ns}.hnsw"));
+            idx.save_hnsw(&hnsw)?;
+        }
+        Ok(())
     }
 
     pub fn set_ef_search(&self, ef: usize) {
-        self.vectors.set_ef_search(ef);
+        for idx in self.vectors.read().values() {
+            idx.set_ef_search(ef);
+        }
     }
 
     pub fn set_ef_construction(&self, ef: usize) {
-        self.vectors.set_ef_construction(ef);
+        for idx in self.vectors.read().values() {
+            idx.set_ef_construction(ef);
+        }
     }
 
     pub fn set_link_top_k(&mut self, k: usize) {
@@ -404,9 +758,14 @@ impl PieskieoDb {
     }
 
     pub fn remove_vector_meta_keys(&self, id: Uuid, keys: &[String]) -> Result<()> {
+        let ns = {
+            let map = self.vector_ns.read();
+            map.get(&id).cloned().unwrap_or_else(Self::default_ns)
+        };
+        let idx = self.vector_index(&ns);
         let (vector, meta) = {
-            let data = self.vectors.inner.read();
-            let meta = self.vectors.meta.read();
+            let data = idx.inner.read();
+            let meta = idx.meta.read();
             let Some(vec) = data.get(&id).cloned() else {
                 return Err(PieskieoError::NotFound);
             };
@@ -417,6 +776,7 @@ impl PieskieoDb {
             (vec, m)
         };
         let payload = bincode::serialize(&VecWalRecord {
+            namespace: Some(ns.clone()),
             vector: vector.clone(),
             meta: Some(meta.clone()),
         })?;
@@ -424,27 +784,31 @@ impl PieskieoDb {
             family: DataFamily::Vec,
             key: id,
             payload,
+            namespace: Some(ns.clone()),
+            collection: None,
+            table: None,
         })?;
-        self.vectors.insert(id, vector, Some(meta))?;
+        idx.insert(id, vector, Some(meta))?;
         Ok(())
     }
 
     /// Compact tombstones and WAL by rewriting snapshot and truncating WAL.
     pub fn vacuum(&self) -> Result<()> {
-        {
-            // drop deleted vectors from in-memory store
-            let tomb = self.vectors.tombstones.read().clone();
+        // drop deleted vectors from in-memory store for each namespace
+        for idx in self.vectors.read().values() {
+            let tomb = idx.tombstones.read().clone();
             if !tomb.is_empty() {
-                let mut inner = self.vectors.inner.write();
+                let mut inner = idx.inner.write();
                 for id in tomb.keys() {
                     inner.remove(id);
                 }
             }
-            self.vectors.tombstones.write().clear();
+            idx.tombstones.write().clear();
         }
+
         // rebuild ANN for clean state
-        let _ = self.vectors.rebuild_hnsw();
-        // persist fresh snapshot + hnsw and truncate WAL
+        let _ = self.rebuild_vectors();
+        // persist fresh snapshots + hnsw and truncate WAL
         self.save_vector_snapshot()?;
         self.wal.write().truncate()?;
         Ok(())
@@ -455,25 +819,33 @@ impl PieskieoDb {
     }
 
     pub fn metrics(&self) -> MetricsSnapshot {
-        MetricsSnapshot {
-            docs: self.data.read().docs.len(),
-            rows: self.data.read().rows.len(),
-            vectors: self.vectors.inner.read().len(),
-            vector_tombstones: self.vectors.tombstones.read().len(),
-            hnsw_ready: self.vectors.hnsw.read().is_some(),
-            ef_search: self
-                .vectors
-                .ef_search
-                .load(std::sync::atomic::Ordering::SeqCst),
-            ef_construction: self
-                .vectors
+        let mut vectors = 0usize;
+        let mut tomb = 0usize;
+        let mut hnsw_ready = true;
+        let mut ef_search = 0usize;
+        let mut ef_construction = 0usize;
+        for idx in self.vectors.read().values() {
+            vectors += idx.inner.read().len();
+            tomb += idx.tombstones.read().len();
+            hnsw_ready &= idx.hnsw.read().is_some();
+            ef_search = idx.ef_search.load(std::sync::atomic::Ordering::SeqCst);
+            ef_construction = idx
                 .ef_construction
-                .load(std::sync::atomic::Ordering::SeqCst),
+                .load(std::sync::atomic::Ordering::SeqCst);
+        }
+        MetricsSnapshot {
+            docs: self.data.read().docs.values().map(|m| m.len()).sum(),
+            rows: self.data.read().rows.values().map(|m| m.len()).sum(),
+            vectors,
+            vector_tombstones: tomb,
+            hnsw_ready,
+            ef_search,
+            ef_construction,
             wal_path: self.path.join("wal.log"),
             wal_bytes: std::fs::metadata(self.path.join("wal.log"))
                 .map(|m| m.len())
                 .unwrap_or(0),
-            snapshot_mtime: std::fs::metadata(self.path.join("vectors.snapshot"))
+            snapshot_mtime: std::fs::metadata(self.path.join("vectors"))
                 .and_then(|m| m.modified())
                 .ok(),
             link_top_k: self.link_top_k,
@@ -507,26 +879,76 @@ fn value_matches(doc: &Value, filter: &HashMap<String, Value>) -> bool {
     true
 }
 
-impl KaedeDb {
+impl PieskieoDb {
     fn filter_map(
         &self,
-        map: &BTreeMap<Uuid, Value>,
+        map: &HashMap<String, HashMap<String, BTreeMap<Uuid, Value>>>,
+        ns: Option<&str>,
+        coll: Option<&str>,
         filter: &HashMap<String, Value>,
         limit: usize,
     ) -> Vec<(Uuid, Value)> {
         let mut out = Vec::new();
-        for (id, v) in map.iter() {
+        match (ns, coll) {
+            (Some(ns), Some(c)) => {
+                if let Some(ns_map) = map.get(ns) {
+                    if let Some(inner) = ns_map.get(c) {
+                        Self::collect_filtered(self, inner, filter, limit, &mut out);
+                    }
+                }
+            }
+            (Some(ns), None) => {
+                if let Some(ns_map) = map.get(ns) {
+                    for inner in ns_map.values() {
+                        Self::collect_filtered(self, inner, filter, limit, &mut out);
+                        if out.len() >= limit {
+                            break;
+                        }
+                    }
+                }
+            }
+            (None, Some(c)) => {
+                for ns_map in map.values() {
+                    if let Some(inner) = ns_map.get(c) {
+                        Self::collect_filtered(self, inner, filter, limit, &mut out);
+                        if out.len() >= limit {
+                            break;
+                        }
+                    }
+                }
+            }
+            (None, None) => {
+                for ns_map in map.values() {
+                    for inner in ns_map.values() {
+                        Self::collect_filtered(self, inner, filter, limit, &mut out);
+                        if out.len() >= limit {
+                            break;
+                        }
+                    }
+                }
+            }
+        };
+        out
+    }
+
+    fn collect_filtered(
+        &self,
+        inner: &BTreeMap<Uuid, Value>,
+        filter: &HashMap<String, Value>,
+        limit: usize,
+        out: &mut Vec<(Uuid, Value)>,
+    ) {
+        for (id, v) in inner.iter() {
             if !self.owns(id) {
                 continue;
             }
             if value_matches(v, filter) {
                 out.push((*id, v.clone()));
                 if out.len() >= limit {
-                    break;
+                    return;
                 }
             }
         }
-        out
     }
 }
 #[derive(Clone, Copy)]
@@ -572,8 +994,7 @@ impl Default for VectorParams {
 
 impl Drop for PieskieoDb {
     fn drop(&mut self) {
-        let snap = self.path.join("vectors.snapshot");
-        let _ = self.vectors.save_snapshot(snap);
+        let _ = self.save_vector_snapshot();
     }
 }
 
@@ -649,9 +1070,10 @@ mod tests {
         db.put_vector(a, vec![0.0, 0.0])?;
         db.put_vector(b, vec![0.0, 0.1])?;
         db.delete_vector(&a)?;
-        assert!(db.vectors.tombstones.read().contains_key(&a));
+        let idx = db.vector_index("default");
+        assert!(idx.tombstones.read().contains_key(&a));
         db.vacuum()?;
-        assert!(!db.vectors.tombstones.read().contains_key(&a));
+        assert!(!idx.tombstones.read().contains_key(&a));
         Ok(())
     }
 }

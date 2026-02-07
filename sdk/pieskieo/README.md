@@ -13,7 +13,16 @@ from pieskieo import PieskieoClient
 
 c = PieskieoClient("http://localhost:8000")
 
-vec_id = c.put_vector([0.1,0.2,0.3], meta={"type":"demo"})
-hits = c.search([0.1,0.2,0.3], k=3)
+# Namespaced vector insert + search
+vec_id = c.put_vector([0.1,0.2,0.3], meta={"type":"demo"}, namespace="team-a")
+hits = c.search([0.1,0.2,0.3], k=3, namespace="team-a")
 print(hits)
+
+# Collection-aware docs (Mongo-like)
+doc_id = c.put_doc({"user": "alice"}, namespace="team-a", collection="users")
+doc = c.get_doc(doc_id, namespace="team-a", collection="users")
+
+# Table-aware rows (Postgres-like)
+row_id = c.put_row({"item": "widget", "price": 9.99}, namespace="team-a", table="orders")
+rows = c.query_rows({"item": "widget"}, namespace="team-a", table="orders")
 ```
