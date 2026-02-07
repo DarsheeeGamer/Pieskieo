@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 use std::path::PathBuf;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use rand_core::OsRng;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
@@ -27,7 +29,6 @@ use uuid::Uuid;
 struct AppState {
     pool: Arc<DbPool>,
     auth: Arc<AuthConfig>,
-    data_dir: PathBuf,
 }
 
 #[derive(Clone)]
@@ -40,7 +41,7 @@ struct AuthConfig {
 #[derive(Clone)]
 struct UserRec {
     user: String,
-    password: String,
+    password_hash: String,
     role: Role,
 }
 
@@ -57,21 +58,21 @@ impl AuthConfig {
         // primary multi-user source: PIESKIEO_USERS as JSON array [{user,pass,role}]
         let mut users = Vec::new();
         let path = PathBuf::from(data_dir).join("auth_users.json");
-        if let Ok(json) = std::env::var("PIESKIEO_USERS") {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json) {
-                if let Some(arr) = val.as_array() {
-                    for item in arr {
-                        if let (Some(u), Some(p)) =
-                            (item.get("user").and_then(|v| v.as_str()), item.get("pass").and_then(|v| v.as_str()))
-                        {
-                            let role = item
-                                .get("role")
-                                .and_then(|v| v.as_str())
-                                .map(Self::parse_role)
-                                .unwrap_or(Role::Read);
+            if let Ok(json) = std::env::var("PIESKIEO_USERS") {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json) {
+                    if let Some(arr) = val.as_array() {
+                        for item in arr {
+                            if let (Some(u), Some(p)) =
+                                (item.get("user").and_then(|v| v.as_str()), item.get("pass").and_then(|v| v.as_str()))
+                            {
+                                let role = item
+                                    .get("role")
+                                    .and_then(|v| v.as_str())
+                                    .map(Self::parse_role)
+                                    .unwrap_or(Role::Read);
                             users.push(UserRec {
                                 user: u.to_string(),
-                                password: p.to_string(),
+                                password_hash: Self::hash_password(p),
                                 role,
                             });
                         }
@@ -85,7 +86,7 @@ impl AuthConfig {
                 if let Ok(p) = std::env::var("PIESKIEO_AUTH_PASSWORD") {
                     users.push(UserRec {
                         user: u,
-                        password: p,
+                        password_hash: Self::hash_password(&p),
                         role: Role::Admin,
                     });
                 }
@@ -98,7 +99,7 @@ impl AuthConfig {
                     for u in arr {
                         users.push(UserRec {
                             user: u.user,
-                            password: u.pass,
+                            password_hash: u.pass,
                             role: Self::parse_role(&u.role),
                         });
                     }
@@ -110,7 +111,7 @@ impl AuthConfig {
         if users.is_empty() && bearer.is_none() {
             users.push(UserRec {
                 user: "Pieskieo".into(),
-                password: "pieskieo".into(),
+                password_hash: Self::hash_password("pieskieo"),
                 role: Role::Admin,
             });
         }
@@ -135,7 +136,7 @@ impl AuthConfig {
             .iter()
             .map(|u| UserDisk {
                 user: u.user.clone(),
-                pass: u.password.clone(),
+                pass: u.password_hash.clone(),
                 role: match u.role {
                     Role::Admin => "admin",
                     Role::Write => "write",
@@ -147,6 +148,29 @@ impl AuthConfig {
         if let Ok(txt) = serde_json::to_string_pretty(&disk) {
             let _ = std::fs::create_dir_all(self.path.parent().unwrap_or_else(|| std::path::Path::new(".")));
             let _ = std::fs::write(&self.path, txt);
+        }
+    }
+
+    fn hash_password(pass: &str) -> String {
+        let salt = argon2::password_hash::SaltString::generate(&mut OsRng);
+        let argon = Argon2::new(
+            argon2::Algorithm::Argon2id,
+            argon2::Version::V0x13,
+            argon2::Params::new(19 * 1024, 3, 1, None).unwrap(), // ~19 MiB, 3 iterations
+        );
+        argon
+            .hash_password(pass.as_bytes(), &salt)
+            .map(|h| h.to_string())
+            .unwrap_or_default()
+    }
+
+    fn verify_password(hash: &str, pass: &str) -> bool {
+        if let Ok(parsed) = PasswordHash::new(hash) {
+            Argon2::default()
+                .verify_password(pass.as_bytes(), &parsed)
+                .is_ok()
+        } else {
+            false
         }
     }
 }
@@ -354,7 +378,7 @@ pub async fn serve() -> anyhow::Result<()> {
     let shards = params.shard_total.max(1);
     let pool = Arc::new(DbPool::new(&data_dir, params, shards)?);
 
-    let state = AppState { pool, auth, data_dir: data_dir.clone().into() };
+    let state = AppState { pool, auth };
 
     // background WAL flusher (group commit) for better latency.
     let flush_ms = std::env::var("PIESKIEO_WAL_FLUSH_MS")
@@ -1116,7 +1140,7 @@ async fn auth_middleware(
                     if let Ok(s) = String::from_utf8(decoded) {
                         if let Some((u, p)) = s.split_once(':') {
                             if let Some(user) =
-                                auth.users.iter().find(|usr| usr.user == u && usr.password == p)
+                                auth.users.iter().find(|usr| usr.user == u && AuthConfig::verify_password(&usr.password_hash, p))
                             {
                                 if authorize(user.role, req.uri().path(), req.method().as_str()) {
                                     let mut req = req;
@@ -1244,6 +1268,11 @@ async fn create_user(
     if !matches!(role, Role::Admin) {
         return Err(ApiError::Forbidden);
     }
+    if input.pass.len() < 8 {
+        return Err(ApiError::BadRequest(
+            "password must be at least 8 characters".into(),
+        ));
+    }
     let mut auth = state.auth.as_ref().clone();
     let role = input
         .role
@@ -1252,7 +1281,7 @@ async fn create_user(
         .unwrap_or(Role::Read);
     auth.users.push(UserRec {
         user: input.user,
-        password: input.pass,
+        password_hash: AuthConfig::hash_password(&input.pass),
         role,
     });
     auth.persist();
