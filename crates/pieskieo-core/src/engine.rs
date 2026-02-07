@@ -15,6 +15,9 @@ pub(crate) struct Collections {
     // namespace -> collection/table -> (id -> payload)
     rows: HashMap<String, HashMap<String, BTreeMap<Uuid, Value>>>,
     docs: HashMap<String, HashMap<String, BTreeMap<Uuid, Value>>>,
+    // simple equality secondary index: ns -> collection -> field -> value_json -> ids
+    row_index: HashMap<String, HashMap<String, HashMap<String, HashMap<String, Vec<Uuid>>>>>,
+    doc_index: HashMap<String, HashMap<String, HashMap<String, HashMap<String, Vec<Uuid>>>>>,
 }
 
 pub struct PieskieoDb {
@@ -280,14 +283,19 @@ impl PieskieoDb {
             collection: Some(Self::col(collection)),
             table: None,
         })?;
-        self.data
-            .write()
-            .docs
-            .entry(Self::ns(ns))
-            .or_default()
-            .entry(Self::col(collection))
-            .or_default()
-            .insert(id, json);
+        {
+            let mut guard = self.data.write();
+            let ns_key = Self::ns(ns);
+            let col_key = Self::col(collection);
+            guard
+                .docs
+                .entry(ns_key.clone())
+                .or_default()
+                .entry(col_key.clone())
+                .or_default()
+                .insert(id, json.clone());
+            Self::index_upsert_doc(&mut guard, ns_key, col_key, id, &json);
+        }
         Ok(())
     }
 
@@ -311,9 +319,16 @@ impl PieskieoDb {
             collection: Some(Self::col(collection)),
             table: None,
         })?;
-        if let Some(ns_map) = self.data.write().docs.get_mut(&Self::ns(ns)) {
-            if let Some(col_map) = ns_map.get_mut(&Self::col(collection)) {
-                col_map.remove(id);
+        {
+            let mut guard = self.data.write();
+            let ns_key = Self::ns(ns);
+            let col_key = Self::col(collection);
+            if let Some(ns_map) = guard.docs.get_mut(&ns_key) {
+                if let Some(col_map) = ns_map.get_mut(&col_key) {
+                    if let Some(old) = col_map.remove(id) {
+                        Self::index_remove_doc(&mut guard, ns_key, col_key, id, &old);
+                    }
+                }
             }
         }
         Ok(())
@@ -347,14 +362,19 @@ impl PieskieoDb {
             table: Some(Self::col(table)),
             collection: None,
         })?;
-        self.data
-            .write()
-            .rows
-            .entry(Self::ns(ns))
-            .or_default()
-            .entry(Self::col(table))
-            .or_default()
-            .insert(id, json);
+        {
+            let mut guard = self.data.write();
+            let ns_key = Self::ns(ns);
+            let tbl_key = Self::col(table);
+            guard
+                .rows
+                .entry(ns_key.clone())
+                .or_default()
+                .entry(tbl_key.clone())
+                .or_default()
+                .insert(id, json.clone());
+            Self::index_upsert_row(&mut guard, ns_key, tbl_key, id, &json);
+        }
         Ok(())
     }
 
@@ -373,9 +393,16 @@ impl PieskieoDb {
             table: Some(Self::col(table)),
             collection: None,
         })?;
-        if let Some(ns_map) = self.data.write().rows.get_mut(&Self::ns(ns)) {
-            if let Some(tbl_map) = ns_map.get_mut(&Self::col(table)) {
-                tbl_map.remove(id);
+        {
+            let mut guard = self.data.write();
+            let ns_key = Self::ns(ns);
+            let tbl_key = Self::col(table);
+            if let Some(ns_map) = guard.rows.get_mut(&ns_key) {
+                if let Some(tbl_map) = ns_map.get_mut(&tbl_key) {
+                    if let Some(old) = tbl_map.remove(id) {
+                        Self::index_remove_row(&mut guard, ns_key, tbl_key, id, &old);
+                    }
+                }
             }
         }
         Ok(())
@@ -1006,6 +1033,107 @@ impl PieskieoDb {
                     out.push((*id, v.clone()));
                     if out.len() >= limit {
                         return;
+                    }
+                }
+            }
+        }
+    }
+
+    fn index_key(v: &Value) -> Option<String> {
+        match v {
+            Value::String(s) => Some(s.clone()),
+            Value::Number(n) => Some(n.to_string()),
+            Value::Bool(b) => Some(b.to_string()),
+            _ => None,
+        }
+    }
+
+    fn index_upsert_doc(colls: &mut Collections, ns: String, col: String, id: Uuid, json: &Value) {
+        if let Some(obj) = json.as_object() {
+            for (k, v) in obj {
+                if let Some(key) = Self::index_key(v) {
+                    let entry = colls
+                        .doc_index
+                        .entry(ns.clone())
+                        .or_default()
+                        .entry(col.clone())
+                        .or_default()
+                        .entry(k.clone())
+                        .or_default()
+                        .entry(key)
+                        .or_default();
+                    if !entry.contains(&id) {
+                        entry.push(id);
+                    }
+                }
+            }
+        }
+    }
+
+    fn index_remove_doc(colls: &mut Collections, ns: String, col: String, id: &Uuid, json: &Value) {
+        if let Some(obj) = json.as_object() {
+            for (k, v) in obj {
+                if let Some(key) = Self::index_key(v) {
+                    if let Some(ns_map) = colls.doc_index.get_mut(&ns) {
+                        if let Some(col_map) = ns_map.get_mut(&col) {
+                            if let Some(field_map) = col_map.get_mut(k) {
+                                if let Some(ids) = field_map.get_mut(&key) {
+                                    ids.retain(|x| x != id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn index_upsert_row(
+        colls: &mut Collections,
+        ns: String,
+        table: String,
+        id: Uuid,
+        json: &Value,
+    ) {
+        if let Some(obj) = json.as_object() {
+            for (k, v) in obj {
+                if let Some(key) = Self::index_key(v) {
+                    let entry = colls
+                        .row_index
+                        .entry(ns.clone())
+                        .or_default()
+                        .entry(table.clone())
+                        .or_default()
+                        .entry(k.clone())
+                        .or_default()
+                        .entry(key)
+                        .or_default();
+                    if !entry.contains(&id) {
+                        entry.push(id);
+                    }
+                }
+            }
+        }
+    }
+
+    fn index_remove_row(
+        colls: &mut Collections,
+        ns: String,
+        table: String,
+        id: &Uuid,
+        json: &Value,
+    ) {
+        if let Some(obj) = json.as_object() {
+            for (k, v) in obj {
+                if let Some(key) = Self::index_key(v) {
+                    if let Some(ns_map) = colls.row_index.get_mut(&ns) {
+                        if let Some(tbl_map) = ns_map.get_mut(&table) {
+                            if let Some(field_map) = tbl_map.get_mut(k) {
+                                if let Some(ids) = field_map.get_mut(&key) {
+                                    ids.retain(|x| x != id);
+                                }
+                            }
+                        }
                     }
                 }
             }
