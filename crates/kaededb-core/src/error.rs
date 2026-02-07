@@ -10,6 +10,8 @@ pub enum KaedeDbError {
     Json(#[from] serde_json::Error),
     #[error("not found")]
     NotFound,
+    #[error("wrong shard")]
+    WrongShard,
 }
 
 pub type Result<T> = std::result::Result<T, KaedeDbError>;

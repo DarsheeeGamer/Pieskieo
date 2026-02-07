@@ -23,6 +23,8 @@ pub struct KaedeDb {
     pub(crate) vectors: VectorIndex,
     pub(crate) graph: GraphStore,
     link_top_k: usize,
+    shard_id: usize,
+    shard_total: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,10 +117,15 @@ impl KaedeDb {
             vectors,
             graph,
             link_top_k: params.link_top_k,
+            shard_id: params.shard_id,
+            shard_total: params.shard_total.max(1),
         })
     }
 
     pub fn put_doc(&self, id: Uuid, json: Value) -> Result<()> {
+        if !self.owns(&id) {
+            return Err(KaedeDbError::WrongShard);
+        }
         let payload = serde_json::to_vec(&json)?;
         self.append_record(&RecordKind::Put {
             family: DataFamily::Doc,
@@ -130,6 +137,9 @@ impl KaedeDb {
     }
 
     pub fn delete_doc(&self, id: &Uuid) -> Result<()> {
+        if !self.owns(id) {
+            return Err(KaedeDbError::WrongShard);
+        }
         self.append_record(&RecordKind::Delete {
             family: DataFamily::Doc,
             key: *id,
@@ -143,6 +153,9 @@ impl KaedeDb {
     }
 
     pub fn put_row<T: Serialize>(&self, id: Uuid, row: &T) -> Result<()> {
+        if !self.owns(&id) {
+            return Err(KaedeDbError::WrongShard);
+        }
         let json = serde_json::to_value(row)?;
         let payload = serde_json::to_vec(&json)?;
         self.append_record(&RecordKind::Put {
@@ -155,6 +168,9 @@ impl KaedeDb {
     }
 
     pub fn delete_row(&self, id: &Uuid) -> Result<()> {
+        if !self.owns(id) {
+            return Err(KaedeDbError::WrongShard);
+        }
         self.append_record(&RecordKind::Delete {
             family: DataFamily::Row,
             key: *id,
@@ -168,10 +184,16 @@ impl KaedeDb {
     }
 
     pub fn get_doc(&self, id: &Uuid) -> Option<Value> {
+        if !self.owns(id) {
+            return None;
+        }
         self.data.read().docs.get(id).cloned()
     }
 
     pub fn get_row(&self, id: &Uuid) -> Option<Value> {
+        if !self.owns(id) {
+            return None;
+        }
         self.data.read().rows.get(id).cloned()
     }
 
@@ -185,6 +207,9 @@ impl KaedeDb {
         vector: Vec<f32>,
         meta: Option<HashMap<String, String>>,
     ) -> Result<()> {
+        if !self.owns(&id) {
+            return Err(KaedeDbError::WrongShard);
+        }
         let payload = bincode::serialize(&VecWalRecord {
             vector: vector.clone(),
             meta: meta.clone(),
@@ -237,6 +262,9 @@ impl KaedeDb {
     }
 
     pub fn delete_vector(&self, id: &Uuid) -> Result<()> {
+        if !self.owns(id) {
+            return Err(KaedeDbError::WrongShard);
+        }
         self.append_record(&RecordKind::Delete {
             family: DataFamily::Vec,
             key: *id,
@@ -313,6 +341,9 @@ impl KaedeDb {
     }
 
     pub fn add_edge(&self, src: Uuid, dst: Uuid, weight: f32) -> Result<()> {
+        if !self.owns(&src) {
+            return Err(KaedeDbError::WrongShard);
+        }
         let payload = bincode::serialize(&crate::graph::Edge { src, dst, weight })?;
         self.append_record(&RecordKind::Put {
             family: DataFamily::Graph,
@@ -430,11 +461,20 @@ impl KaedeDb {
                 .and_then(|m| m.modified())
                 .ok(),
             link_top_k: self.link_top_k,
+            shard_id: self.shard_id,
+            shard_total: self.shard_total,
         }
     }
 
     fn append_record(&self, record: &RecordKind) -> Result<()> {
         self.wal.write().append(record)
+    }
+
+    fn owns(&self, id: &Uuid) -> bool {
+        if self.shard_total <= 1 {
+            return true;
+        }
+        (shard_hash(id) % self.shard_total) == self.shard_id
     }
 }
 
@@ -445,6 +485,8 @@ pub struct VectorParams {
     pub ef_search: usize,
     pub max_elements: usize,
     pub link_top_k: usize,
+    pub shard_id: usize,
+    pub shard_total: usize,
 }
 
 pub struct MetricsSnapshot {
@@ -459,6 +501,8 @@ pub struct MetricsSnapshot {
     pub wal_bytes: u64,
     pub snapshot_mtime: Option<std::time::SystemTime>,
     pub link_top_k: usize,
+    pub shard_id: usize,
+    pub shard_total: usize,
 }
 
 impl Default for VectorParams {
@@ -469,6 +513,8 @@ impl Default for VectorParams {
             ef_search: 50,
             max_elements: 100_000,
             link_top_k: 0,
+            shard_id: 0,
+            shard_total: 1,
         }
     }
 }
@@ -478,6 +524,13 @@ impl Drop for KaedeDb {
         let snap = self.path.join("vectors.snapshot");
         let _ = self.vectors.save_snapshot(snap);
     }
+}
+
+fn shard_hash(id: &Uuid) -> usize {
+    let bytes = id.as_bytes();
+    let mut arr = [0u8; 8];
+    arr.copy_from_slice(&bytes[..8]);
+    u64::from_le_bytes(arr) as usize
 }
 
 #[cfg(test)]
