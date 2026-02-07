@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Pieskieo installer (Linux/macOS)
-# Builds from source and installs binaries into /usr/local/bin (or ~/.local/bin if not root).
+# Linux: requires sudo/root; installs to /usr/local/bin and sets up systemd service pieskieo.
+# macOS: installs to /usr/local/bin or ~/.local/bin (no service).
 
 usage() {
   cat <<'EOF'
@@ -23,6 +24,11 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; usage; exit 1 ;;
   esac
 done
+
+if [[ "$(uname -s)" == "Linux" && "${EUID:-$(id -u)}" -ne 0 ]]; then
+  echo "[installer] please run with sudo/root on Linux to install as a service"
+  exit 1
+fi
 
 if [[ -z "${PREFIX}" ]]; then
   if [[ -w /usr/local/bin ]]; then
@@ -57,5 +63,31 @@ for bin in pieskieo-server pieskieo load bench; do
     echo "Installed ${bin} -> ${BIN_DST}/${bin}"
   fi
 done
+
+if [[ "$(uname -s)" == "Linux" ]]; then
+  echo "[installer] configuring systemd service pieskieo"
+  mkdir -p /var/lib/pieskieo
+  cat >/etc/systemd/system/pieskieo.service <<'EOF'
+[Unit]
+Description=Pieskieo Database Service
+After=network.target
+
+[Service]
+Type=simple
+Environment=PIESKIEO_DATA=/var/lib/pieskieo
+Environment=PIESKIEO_LISTEN=0.0.0.0:8000
+ExecStart=/usr/local/bin/pieskieo-server --serve
+Restart=on-failure
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl daemon-reload
+  systemctl enable pieskieo.service
+  systemctl restart pieskieo.service
+  echo "[installer] service pieskieo enabled and started"
+fi
 
 echo "Done. Ensure ${BIN_DST} is on your PATH."
