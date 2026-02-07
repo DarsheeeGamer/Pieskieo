@@ -4,7 +4,7 @@ set -euo pipefail
 # Auto-fetch prebuilt Pieskieo binary zip from GitHub releases.
 # Usage: curl -fsSL https://raw.githubusercontent.com/DarsheeeGamer/Pieskieo/main/install/get-pieskieo.sh | bash
 # Optional env:
-#   PIESKIEO_VERSION   tag to install (default: v0.1.2)
+#   PIESKIEO_VERSION   tag to install (default: latest)
 #   PIESKIEO_PREFIX    install prefix (default: /usr/local if writable, else ~/.local)
 
 choose_prefix() {
@@ -46,6 +46,16 @@ fetch_version() {
   elif [[ $# -ge 1 && -n "$1" ]]; then
     echo "$1"
   else
+    if command -v curl >/dev/null 2>&1; then
+      # Follow GitHub redirect header to get latest tag.
+      local tag
+      tag=$(curl -fsSI https://github.com/DarsheeeGamer/Pieskieo/releases/latest \
+        | sed -n 's@^[Ll]ocation: .*/tag/\\(v[^/]*\\).*@\\1@p' | tail -n1)
+      if [[ -n "$tag" ]]; then
+        echo "$tag"
+        return
+      fi
+    fi
     echo "v0.1.2"
   fi
 }
