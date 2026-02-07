@@ -8,12 +8,16 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
-use axum::extract::DefaultBodyLimit;
+use axum::extract::{
+    ws::{Message, WebSocket, WebSocketUpgrade},
+    DefaultBodyLimit,
+};
 use axum::{
     body::Body,
     extract::{ConnectInfo, Path, Query, State},
     http::Request,
     middleware::{self, Next},
+    response::IntoResponse,
     routing::{delete, get, post},
     Extension, Json, Router,
 };
@@ -796,6 +800,7 @@ pub async fn serve() -> anyhow::Result<()> {
         .route("/v1/replica/wal", get(replica_wal))
         .route("/v1/replica/stream", get(replica_stream))
         .route("/v1/replica/apply", post(replica_apply))
+        .route("/v1/replica/ws", get(replica_ws))
         .route("/metrics", get(metrics))
         .route("/v1/admin/reshard", post(reshard))
         .route("/v1/admin/reshard/status", get(reshard_status))
@@ -1652,6 +1657,79 @@ async fn replica_stream(
         }
         last_offset = max_end;
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+}
+
+async fn replica_ws(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    Extension(role): Extension<Role>,
+    Query(q): Query<WalQuery>,
+) -> Result<impl IntoResponse, ApiError> {
+    if !matches!(role, Role::Admin) {
+        return Err(ApiError::Forbidden);
+    }
+    let since = q.since.unwrap_or(0);
+    Ok(ws.on_upgrade(move |socket| replica_ws_loop(socket, state, since)))
+}
+
+async fn replica_ws_loop(mut socket: WebSocket, state: AppState, since: u64) {
+    let mut offset = since;
+    loop {
+        let guard = state.pool.read().await;
+        let mut slices = Vec::new();
+        let mut max_end = offset;
+        for (idx, shard) in guard.shards.iter().enumerate() {
+            match shard.wal_replay_since(offset) {
+                Ok((records, end)) => {
+                    if !records.is_empty() {
+                        let mut encoded: Vec<String> = Vec::with_capacity(records.len());
+                        for rec in records {
+                            if let Ok(bytes) = bincode::serialize(&rec) {
+                                encoded.push(B64.encode(bytes));
+                            }
+                        }
+                        slices.push(WalShardSlice {
+                            shard: idx,
+                            end_offset: end,
+                            records: encoded,
+                        });
+                    }
+                    if end > max_end {
+                        max_end = end;
+                    }
+                }
+                Err(e) => {
+                    let _ = socket.send(Message::Text(format!("error: {}", e))).await;
+                }
+            }
+        }
+        drop(guard);
+        if !slices.is_empty() {
+            let frame = serde_json::to_string(&WalStream {
+                end_offset: max_end,
+                slices,
+            });
+            if let Ok(f) = frame {
+                if socket.send(Message::Text(f)).await.is_err() {
+                    break;
+                }
+            }
+            offset = max_end;
+        } else {
+            if socket.send(Message::Text("ping".into())).await.is_err() {
+                break;
+            }
+        }
+        if let Some(msg) = socket.recv().await {
+            match msg {
+                Ok(Message::Close(_)) => break,
+                _ => {}
+            }
+        } else {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
 }
 
