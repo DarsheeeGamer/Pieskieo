@@ -1,14 +1,16 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use pieskieo_core::{PieskieoDb, VectorParams, SqlResult};
+use ctrlc;
+use pieskieo_core::{PieskieoDb, SqlResult, VectorParams};
 use pieskieo_server;
-use serde_json::Value;
-use serde::Deserialize;
-use std::io::{self, Write};
-use std::time::Instant;
 use reqwest::blocking::Client;
 use rustyline::DefaultEditor;
+use serde::Deserialize;
+use serde_json::Value;
+use std::fs;
+use std::io::{self, Write};
 use std::path::PathBuf;
+use std::time::Instant;
 use tokio::runtime::Runtime;
 
 #[derive(Parser)]
@@ -107,6 +109,28 @@ enum Commands {
     },
     /// Start interactive shell
     Repl,
+
+    /// Follow WAL from a leader and apply to a follower server
+    Follow {
+        /// Leader base URL (e.g. http://leader:8000)
+        #[arg(long)]
+        leader: String,
+        /// Follower base URL (default: server_url/env PIESKIEO_URL)
+        #[arg(long)]
+        follower: Option<String>,
+        /// Persist offset to this file (default: .pieskieo-offset)
+        #[arg(long, default_value = ".pieskieo-offset")]
+        offset_file: PathBuf,
+        /// Poll interval seconds
+        #[arg(long, default_value_t = 2)]
+        interval: u64,
+        /// Bearer token for leader (defaults env PIESKIEO_TOKEN)
+        #[arg(long)]
+        leader_token: Option<String>,
+        /// Bearer token for follower (defaults env PIESKIEO_TOKEN_FOLLOWER else leader token)
+        #[arg(long)]
+        follower_token: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -234,6 +258,7 @@ fn main() -> Result<()> {
         }
         Some(Commands::Repl) => unreachable!(), // handled above
         Some(Commands::Sql { .. }) => unreachable!(), // handled in network mode
+        Some(Commands::Follow { .. }) => unreachable!(), // handled in network mode
         None => {
             println!("No command given. Use --help for usage, or run with --repl.");
         }
@@ -262,17 +287,36 @@ fn run_network_mode(cli: Cli, base_url: &str) -> Result<()> {
             println!("{}", data);
             Ok(())
         }
-        Some(Commands::Repl) | None if cli.repl || cli.command.is_none() => {
-            run_net_repl(
+        Some(Commands::Follow {
+            leader,
+            follower,
+            offset_file,
+            interval,
+            leader_token,
+            follower_token,
+        }) => {
+            let follower_url = follower.unwrap_or_else(|| base_url.to_string());
+            follow_replication(
                 &client,
-                base_url,
-                AuthOpt {
-                    bearer: token,
-                    basic_user: None,
-                    basic_pass: None,
-                },
+                &leader,
+                &follower_url,
+                offset_file,
+                interval,
+                leader_token.or_else(|| token.clone()),
+                follower_token
+                    .or_else(|| std::env::var("PIESKIEO_TOKEN_FOLLOWER").ok())
+                    .or(token),
             )
         }
+        Some(Commands::Repl) | None if cli.repl || cli.command.is_none() => run_net_repl(
+            &client,
+            base_url,
+            AuthOpt {
+                bearer: token,
+                basic_user: None,
+                basic_pass: None,
+            },
+        ),
         Some(Commands::PutDoc { .. })
         | Some(Commands::QueryDoc { .. })
         | Some(Commands::PutVector { .. })
@@ -312,14 +356,19 @@ fn run_repl(db: PieskieoDb) -> Result<()> {
 
 fn run_repl_command(db: &PieskieoDb, line: String) -> Result<bool> {
     let trimmed = line.trim();
-        if trimmed.eq_ignore_ascii_case("help") {
-            println!("Commands:\n  doc.put <json>\n  doc.get <uuid>\n  row.put <json>\n  row.get <uuid>\n  vec.put [0.1,0.2,...]\n  vec.search [0.1,0.2,...] [k]\nOr enter raw PQL like: SELECT * FROM default.people WHERE age > 20 LIMIT 5;");
-            return Ok(true);
-        }
+    if trimmed.eq_ignore_ascii_case("help") {
+        println!("Commands:\n  doc.put <json>\n  doc.get <uuid>\n  row.put <json>\n  row.get <uuid>\n  vec.put [0.1,0.2,...]\n  vec.search [0.1,0.2,...] [k]\nOr enter raw PQL like: SELECT * FROM default.people WHERE age > 20 LIMIT 5;");
+        return Ok(true);
+    }
     if trimmed.is_empty() {
         return Ok(true);
     }
-    if trimmed.ends_with(';') || trimmed.to_uppercase().starts_with("SELECT") || trimmed.to_uppercase().starts_with("INSERT") || trimmed.to_uppercase().starts_with("UPDATE") || trimmed.to_uppercase().starts_with("DELETE") {
+    if trimmed.ends_with(';')
+        || trimmed.to_uppercase().starts_with("SELECT")
+        || trimmed.to_uppercase().starts_with("INSERT")
+        || trimmed.to_uppercase().starts_with("UPDATE")
+        || trimmed.to_uppercase().starts_with("DELETE")
+    {
         match db.query_sql(trimmed.trim_end_matches(';'))? {
             SqlResult::Select(rows) => {
                 for (id, v) in rows {
@@ -430,7 +479,9 @@ fn net_query_sql(client: &Client, base: &str, auth: AuthOpt, sql: &str) -> Resul
         ok: bool,
         data: serde_json::Value,
     }
-    let mut req = client.post(format!("{}/v1/sql", base)).json(&serde_json::json!({ "sql": sql }));
+    let mut req = client
+        .post(format!("{}/v1/sql", base))
+        .json(&serde_json::json!({ "sql": sql }));
     if let Some(t) = auth.bearer {
         req = req.bearer_auth(t);
     } else if let Some(user) = auth.basic_user {
@@ -496,5 +547,92 @@ fn run_net_repl_with_prompt(
             Err(e) => eprintln!("error: {e}"),
         }
     }
+    Ok(())
+}
+
+fn follow_replication(
+    client: &Client,
+    leader: &str,
+    follower: &str,
+    offset_file: PathBuf,
+    interval: u64,
+    leader_token: Option<String>,
+    follower_token: Option<String>,
+) -> Result<()> {
+    let mut offset = read_offset(&offset_file)?;
+    println!(
+        "following WAL from {} -> {} starting at offset {} (ctrl+c to stop)",
+        leader, follower, offset
+    );
+    let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    {
+        let running = running.clone();
+        ctrlc::set_handler(move || {
+            running.store(false, std::sync::atomic::Ordering::SeqCst);
+        })
+        .ok();
+    }
+    while running.load(std::sync::atomic::Ordering::SeqCst) {
+        let url = format!("{}/v1/replica/wal?since={}", leader, offset);
+        let mut req = client.get(&url);
+        if let Some(tok) = &leader_token {
+            req = req.bearer_auth(tok);
+        }
+        let resp = req.send()?;
+        if !resp.status().is_success() {
+            eprintln!("leader {} responded {}", leader, resp.status());
+            std::thread::sleep(std::time::Duration::from_secs(interval));
+            continue;
+        }
+        let val: serde_json::Value = resp.json()?;
+        let slices = val["data"]["slices"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let mut max_end = offset;
+        for slice in slices {
+            let end = slice["end_offset"].as_u64().unwrap_or(offset);
+            let records = slice["records"].as_array().cloned().unwrap_or_default();
+            if records.is_empty() {
+                max_end = max_end.max(end);
+                continue;
+            }
+            let apply_url = format!("{}/v1/replica/apply", follower);
+            let mut req = client
+                .post(&apply_url)
+                .json(&serde_json::json!({ "records": records }));
+            if let Some(tok) = &follower_token {
+                req = req.bearer_auth(tok);
+            }
+            let apply_resp = req.send()?;
+            if !apply_resp.status().is_success() {
+                eprintln!("follower apply failed {}", apply_resp.status());
+                std::thread::sleep(std::time::Duration::from_secs(interval));
+                continue;
+            }
+            max_end = max_end.max(end);
+        }
+        if max_end > offset {
+            offset = max_end;
+            write_offset(&offset_file, offset)?;
+        } else {
+            std::thread::sleep(std::time::Duration::from_secs(interval));
+        }
+    }
+    println!("stopped at offset {}", offset);
+    Ok(())
+}
+
+fn read_offset(path: &PathBuf) -> Result<u64> {
+    if let Ok(s) = fs::read_to_string(path) {
+        if let Ok(v) = s.trim().parse::<u64>() {
+            return Ok(v);
+        }
+    }
+    Ok(0)
+}
+
+fn write_offset(path: &PathBuf, offset: u64) -> Result<()> {
+    fs::write(path, offset.to_string())?;
     Ok(())
 }
