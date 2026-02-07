@@ -533,6 +533,11 @@ struct VectorConfigInput {
 }
 
 #[derive(Deserialize)]
+struct ReplicationBatch {
+    records: Vec<String>, // base64-encoded RecordKind
+}
+
+#[derive(Deserialize)]
 struct EdgeInput {
     src: Uuid,
     dst: Uuid,
@@ -728,6 +733,8 @@ pub async fn serve() -> anyhow::Result<()> {
         .route("/v1/vector/:id", delete(delete_vector))
         .route("/v1/schema", post(set_schema))
         .route("/v1/sql", post(query_sql))
+        .route("/v1/replica/wal", get(replica_wal))
+        .route("/v1/replica/apply", post(replica_apply))
         .route("/metrics", get(metrics))
         .route("/v1/graph/edge", post(add_edge))
         .route("/v1/graph/:id", get(list_neighbors))
@@ -1432,6 +1439,54 @@ async fn metrics(
     Ok(resp)
 }
 
+async fn replica_wal(
+    State(state): State<AppState>,
+    Extension(role): Extension<Role>,
+) -> Result<Json<ApiResponse<Vec<String>>>, ApiError> {
+    if !matches!(role, Role::Admin) {
+        return Err(ApiError::Forbidden);
+    }
+    let mut out = Vec::new();
+    for shard in state.pool.each() {
+        let wal = shard.wal_dump().map_err(ApiError::from)?;
+        for rec in wal {
+            let bytes =
+                bincode::serialize(&rec).map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+            out.push(B64.encode(bytes));
+        }
+    }
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: out,
+    }))
+}
+
+async fn replica_apply(
+    State(state): State<AppState>,
+    Extension(role): Extension<Role>,
+    Json(input): Json<ReplicationBatch>,
+) -> Result<Json<ApiResponse<&'static str>>, ApiError> {
+    if !matches!(role, Role::Admin) {
+        return Err(ApiError::Forbidden);
+    }
+    let mut records = Vec::new();
+    for b64 in input.records {
+        let bytes = B64
+            .decode(b64)
+            .map_err(|e| ApiError::BadRequest(format!("b64 decode error: {e}")))?;
+        let rec: pieskieo_core::wal::RecordKind = bincode::deserialize(&bytes)
+            .map_err(|e| ApiError::BadRequest(format!("decode: {e}")))?;
+        records.push(rec);
+    }
+    for shard in state.pool.each() {
+        shard.apply_records(&records).map_err(ApiError::from)?;
+    }
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: "applied",
+    }))
+}
+
 async fn auth_middleware(
     State(auth): State<Arc<RwLock<AuthConfig>>>,
     mut req: Request<Body>,
@@ -1446,6 +1501,7 @@ async fn auth_middleware(
             if let Some(tok) = val.strip_prefix("Bearer ") {
                 if let Some(expected) = &auth_guard.bearer {
                     if tok == expected {
+                        req.extensions_mut().insert(Role::Admin);
                         return Ok(next.run(req).await);
                     }
                 }

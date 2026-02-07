@@ -104,13 +104,14 @@ impl PieskieoDb {
         let ns_key = Self::ns(ns);
         let col_key = Self::col(collection);
         let guard = self.data.read();
-        if let Some(schema) = guard
-            .doc_schema
-            .get(&ns_key)
-            .and_then(|m| m.get(&col_key))
-        {
+        if let Some(schema) = guard.doc_schema.get(&ns_key).and_then(|m| m.get(&col_key)) {
             Self::validate_object(json)?;
-            Self::check_schema(id, json, schema, guard.doc_index.get(&ns_key).and_then(|m| m.get(&col_key)))?;
+            Self::check_schema(
+                id,
+                json,
+                schema,
+                guard.doc_index.get(&ns_key).and_then(|m| m.get(&col_key)),
+            )?;
         }
         Ok(())
     }
@@ -125,13 +126,14 @@ impl PieskieoDb {
         let ns_key = Self::ns(ns);
         let tbl_key = Self::col(table);
         let guard = self.data.read();
-        if let Some(schema) = guard
-            .row_schema
-            .get(&ns_key)
-            .and_then(|m| m.get(&tbl_key))
-        {
+        if let Some(schema) = guard.row_schema.get(&ns_key).and_then(|m| m.get(&tbl_key)) {
             Self::validate_object(json)?;
-            Self::check_schema(id, json, schema, guard.row_index.get(&ns_key).and_then(|m| m.get(&tbl_key)))?;
+            Self::check_schema(
+                id,
+                json,
+                schema,
+                guard.row_index.get(&ns_key).and_then(|m| m.get(&tbl_key)),
+            )?;
         }
         Ok(())
     }
@@ -177,7 +179,12 @@ impl PieskieoDb {
 
     fn exec_insert(&self, stmt: &Statement) -> Result<SqlResult> {
         let insert = match stmt {
-            Statement::Insert { table_name, columns, source, .. } => (table_name, columns, source),
+            Statement::Insert {
+                table_name,
+                columns,
+                source,
+                ..
+            } => (table_name, columns, source),
             _ => return Err(PieskieoError::Internal("not insert".into())),
         };
         let (family, ns, coll) = self.split_name(insert.0)?;
@@ -310,7 +317,9 @@ impl PieskieoDb {
 
     fn exec_delete(&self, stmt: &Statement) -> Result<SqlResult> {
         let (tables, selection) = match stmt {
-            Statement::Delete { tables, selection, .. } => (tables, selection),
+            Statement::Delete {
+                tables, selection, ..
+            } => (tables, selection),
             _ => return Err(PieskieoError::Internal("not delete".into())),
         };
         let table = tables
@@ -519,20 +528,12 @@ impl PieskieoDb {
                         DataFamily::Doc => {
                             let ns = namespace.unwrap_or_else(Self::default_ns);
                             let col = collection.unwrap_or_else(Self::default_ns);
-                            guard
-                                .doc_schema
-                                .entry(ns)
-                                .or_default()
-                                .insert(col, def);
+                            guard.doc_schema.entry(ns).or_default().insert(col, def);
                         }
                         DataFamily::Row => {
                             let ns = namespace.unwrap_or_else(Self::default_ns);
                             let tbl = table.unwrap_or_else(Self::default_ns);
-                            guard
-                                .row_schema
-                                .entry(ns)
-                                .or_default()
-                                .insert(tbl, def);
+                            guard.row_schema.entry(ns).or_default().insert(tbl, def);
                         }
                         _ => {}
                     }
@@ -1325,6 +1326,159 @@ impl PieskieoDb {
         self.wal.write().append(record)
     }
 
+    pub fn wal_dump(&self) -> Result<Vec<RecordKind>> {
+        self.wal.read().replay()
+    }
+
+    pub fn apply_records(&self, records: &[RecordKind]) -> Result<()> {
+        for rec in records {
+            self.append_record(rec)?;
+            self.apply_record(rec)?;
+        }
+        Ok(())
+    }
+
+    fn apply_record(&self, rec: &RecordKind) -> Result<()> {
+        match rec {
+            RecordKind::Put {
+                family,
+                key,
+                payload,
+                namespace,
+                collection,
+                table,
+            } => match family {
+                DataFamily::Doc => {
+                    let ns = namespace.clone().unwrap_or_else(Self::default_ns);
+                    let col = collection.clone().unwrap_or_else(Self::default_ns);
+                    let v: Value = serde_json::from_slice(payload)?;
+                    let mut guard = self.data.write();
+                    guard
+                        .docs
+                        .entry(ns.clone())
+                        .or_default()
+                        .entry(col.clone())
+                        .or_default()
+                        .insert(*key, v.clone());
+                    Self::index_upsert_doc(&mut guard, ns, col, *key, &v);
+                }
+                DataFamily::Row => {
+                    let ns = namespace.clone().unwrap_or_else(Self::default_ns);
+                    let tbl = table.clone().unwrap_or_else(Self::default_ns);
+                    let v: Value = serde_json::from_slice(payload)?;
+                    let mut guard = self.data.write();
+                    guard
+                        .rows
+                        .entry(ns.clone())
+                        .or_default()
+                        .entry(tbl.clone())
+                        .or_default()
+                        .insert(*key, v.clone());
+                    Self::index_upsert_row(&mut guard, ns, tbl, *key, &v);
+                }
+                DataFamily::Vec => match bincode::deserialize::<VecWalRecord>(payload) {
+                    Ok(rec) => {
+                        let ns = rec.namespace.unwrap_or_else(Self::default_ns);
+                        let idx = self.vector_index(&ns);
+                        idx.insert(*key, rec.vector, rec.meta)?;
+                        self.vector_ns.write().insert(*key, ns);
+                    }
+                    Err(_) => {
+                        let idx = self.vector_index(&Self::default_ns());
+                        idx.insert(*key, Vec::new(), None)?;
+                        self.vector_ns.write().insert(*key, Self::default_ns());
+                    }
+                },
+                DataFamily::Graph => {
+                    if let Ok(edge) = bincode::deserialize::<crate::graph::Edge>(payload) {
+                        let _ = self.graph.add_edge(edge.src, edge.dst, edge.weight);
+                    }
+                }
+            },
+            RecordKind::Delete {
+                family,
+                key,
+                namespace,
+                collection,
+                table,
+            } => match family {
+                DataFamily::Doc => {
+                    let ns = namespace.clone().unwrap_or_else(Self::default_ns);
+                    let col = collection.clone().unwrap_or_else(Self::default_ns);
+                    let mut guard = self.data.write();
+                    if let Some(map) = guard.docs.get_mut(&ns).and_then(|m| m.get_mut(&col)) {
+                        map.remove(key);
+                    }
+                    if let Some(idx) = guard.doc_index.get_mut(&ns).and_then(|m| m.get_mut(&col)) {
+                        for (_field, valmap) in idx.iter_mut() {
+                            for (_v, ids) in valmap.iter_mut() {
+                                ids.retain(|id| id != key);
+                            }
+                        }
+                    }
+                }
+                DataFamily::Row => {
+                    let ns = namespace.clone().unwrap_or_else(Self::default_ns);
+                    let tbl = table.clone().unwrap_or_else(Self::default_ns);
+                    let mut guard = self.data.write();
+                    if let Some(map) = guard.rows.get_mut(&ns).and_then(|m| m.get_mut(&tbl)) {
+                        map.remove(key);
+                    }
+                    if let Some(idx) = guard.row_index.get_mut(&ns).and_then(|m| m.get_mut(&tbl)) {
+                        for (_field, valmap) in idx.iter_mut() {
+                            for (_v, ids) in valmap.iter_mut() {
+                                ids.retain(|id| id != key);
+                            }
+                        }
+                    }
+                }
+                DataFamily::Vec => {
+                    if let Some(ns) = self.vector_ns.read().get(key).cloned() {
+                        let idx = self.vector_index(&ns);
+                        idx.delete(key);
+                        self.vector_ns.write().remove(key);
+                    }
+                }
+                DataFamily::Graph => {}
+            },
+            RecordKind::Schema {
+                family,
+                namespace,
+                collection,
+                table,
+                schema,
+            } => {
+                let ns = namespace.clone().unwrap_or_else(Self::default_ns);
+                let def: SchemaDef = serde_json::from_slice(schema)?;
+                match family {
+                    DataFamily::Doc => {
+                        let name = collection.clone().unwrap_or_else(Self::default_ns);
+                        self.data
+                            .write()
+                            .doc_schema
+                            .entry(ns)
+                            .or_default()
+                            .insert(name, def);
+                    }
+                    DataFamily::Row => {
+                        let name = table.clone().unwrap_or_else(Self::default_ns);
+                        self.data
+                            .write()
+                            .row_schema
+                            .entry(ns)
+                            .or_default()
+                            .insert(name, def);
+                    }
+                    _ => {}
+                }
+            }
+            RecordKind::AddEdge { src, dst, weight } => {
+                self.graph.add_edge(*src, *dst, *weight);
+            }
+        }
+        Ok(())
+    }
+
     fn owns(&self, id: &Uuid) -> bool {
         if self.shard_total <= 1 {
             return true;
@@ -1530,12 +1684,8 @@ impl PieskieoDb {
             self.parse_select(stmt)?;
         let mut rows = self.collect_filtered_ns(&ns, &coll, target_rows, &conds);
         if let Some(join) = join_spec {
-            let right = self.collect_filtered_ns(
-                &join.right_ns,
-                &join.right_coll,
-                join.right_is_rows,
-                &[],
-            );
+            let right =
+                self.collect_filtered_ns(&join.right_ns, &join.right_coll, join.right_is_rows, &[]);
             let mut joined = Vec::new();
             for (lid, lv) in &rows {
                 if let Some(lobj) = lv.as_object() {
@@ -1620,7 +1770,10 @@ impl PieskieoDb {
                 };
                 out_obj.insert(agg.alias, val);
             }
-            return Ok(SqlResult::Select(vec![(Uuid::nil(), Value::Object(out_obj))]));
+            return Ok(SqlResult::Select(vec![(
+                Uuid::nil(),
+                Value::Object(out_obj),
+            )]));
         }
 
         let start = offset.min(rows.len());
@@ -1704,23 +1857,19 @@ impl PieskieoDb {
                     saw_wildcard = true;
                 }
                 SelectItem::UnnamedExpr(Expr::Identifier(id)) => {
-                    projections
-                        .get_or_insert_with(Vec::new)
-                        .push(Projection {
-                            source: id.value.clone(),
-                            alias: id.value.clone(),
-                        });
+                    projections.get_or_insert_with(Vec::new).push(Projection {
+                        source: id.value.clone(),
+                        alias: id.value.clone(),
+                    });
                 }
                 SelectItem::ExprWithAlias {
                     expr: Expr::Identifier(id),
                     alias,
                 } => {
-                    projections
-                        .get_or_insert_with(Vec::new)
-                        .push(Projection {
-                            source: id.value.clone(),
-                            alias: alias.value.clone(),
-                        });
+                    projections.get_or_insert_with(Vec::new).push(Projection {
+                        source: id.value.clone(),
+                        alias: alias.value.clone(),
+                    });
                 }
                 SelectItem::UnnamedExpr(Expr::Function(f)) => {
                     aggs.push(Self::parse_agg(f, None)?);
@@ -1785,13 +1934,20 @@ impl PieskieoDb {
             Some("rows") | Some("tables") | Some("table") | Some("row") => true,
             Some("docs") | Some("collections") | Some("doc") => false,
             _ => {
-                coll.starts_with("rows_")
-                    || coll.starts_with("table_")
-                    || coll.starts_with("tbl_")
+                coll.starts_with("rows_") || coll.starts_with("table_") || coll.starts_with("tbl_")
             }
         };
         Ok((
-            ns, coll, conds, projections, limit, offset, order_by, join_spec, aggs, target_rows,
+            ns,
+            coll,
+            conds,
+            projections,
+            limit,
+            offset,
+            order_by,
+            join_spec,
+            aggs,
+            target_rows,
         ))
     }
 
@@ -1819,19 +1975,13 @@ impl PieskieoDb {
             return Ok(None);
         }
         if joins.len() > 1 {
-            return Err(PieskieoError::Internal(
-                "only one JOIN supported".into(),
-            ));
+            return Err(PieskieoError::Internal("only one JOIN supported".into()));
         }
         let j = &joins[0];
         // only INNER JOIN
         let on = match &j.join_operator {
             JoinOperator::Inner(constraint) => constraint,
-            _ => {
-                return Err(PieskieoError::Internal(
-                    "only INNER JOIN supported".into(),
-                ))
-            }
+            _ => return Err(PieskieoError::Internal("only INNER JOIN supported".into())),
         };
         let right_name = self.extract_name_from_table_factor(&j.relation)?;
         let (rfam, rns, rcoll) = self.split_name(right_name)?;
@@ -1853,11 +2003,7 @@ impl PieskieoDb {
                     ));
                 }
             }
-            _ => {
-                return Err(PieskieoError::Internal(
-                    "JOIN requires ON clause".into(),
-                ))
-            }
+            _ => return Err(PieskieoError::Internal("JOIN requires ON clause".into())),
         };
         Ok(Some(JoinSpec {
             right_ns: rns,
@@ -1932,8 +2078,8 @@ impl PieskieoDb {
             2 => Ok((None, parts[0].clone(), parts[1].clone())),
             1 => Ok((None, "default".into(), parts[0].clone())),
             _ => Err(PieskieoError::Internal(
-            "table name must be [family.]ns.coll".into(),
-        )),
+                "table name must be [family.]ns.coll".into(),
+            )),
         }
     }
 
@@ -1943,9 +2089,7 @@ impl PieskieoDb {
     ) -> Result<&'a sqlparser::ast::ObjectName> {
         match tf {
             TableFactor::Table { name, .. } => Ok(name),
-            _ => Err(PieskieoError::Internal(
-                "only base tables supported".into(),
-            )),
+            _ => Err(PieskieoError::Internal("only base tables supported".into())),
         }
     }
 
@@ -2535,4 +2679,3 @@ mod tests {
         Ok(())
     }
 }
-
