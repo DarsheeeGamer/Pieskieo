@@ -163,6 +163,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/vector/:id/meta/delete", post(delete_vector_meta_keys))
         .route("/v1/vector/:id", get(get_vector))
         .route("/v1/vector/vacuum", post(vacuum_vectors))
+        .route("/v1/shard/which/:id", get(which_shard))
         .route("/v1/vector/search", post(search_vector))
         .route("/v1/vector/rebuild", post(rebuild_vectors))
         .route("/v1/vector/snapshot/save", post(save_snapshot))
@@ -209,6 +210,14 @@ fn vector_params_from_env() -> KaedeDbVectorParams {
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(4);
+    let shard_total = std::env::var("KAEDEDB_SHARD_TOTAL")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(1);
+    let shard_id = std::env::var("KAEDEDB_SHARD_ID")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
 
     KaedeDbVectorParams {
         metric,
@@ -216,6 +225,8 @@ fn vector_params_from_env() -> KaedeDbVectorParams {
         ef_search: ef_s,
         max_elements: max_el,
         link_top_k,
+        shard_id,
+        shard_total,
     }
 }
 async fn health() -> &'static str {
@@ -481,12 +492,29 @@ async fn list_neighbors(
     }))
 }
 
+async fn which_shard(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<ApiResponse<HashMap<&'static str, usize>>>, ApiError> {
+    let metrics = state.db.metrics();
+    let mut arr = [0u8; 8];
+    arr.copy_from_slice(&id.as_bytes()[..8]);
+    let shard_id = (u64::from_le_bytes(arr) as usize) % metrics.shard_total;
+    let mut map = HashMap::new();
+    map.insert("shard_id", shard_id);
+    map.insert("shard_total", metrics.shard_total);
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: map,
+    }))
+}
+
 async fn metrics(
     State(state): State<AppState>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
     let m = state.db.metrics();
     let body = format!(
-        "kaededb_docs {}\nkaededb_rows {}\nkaededb_vectors {}\nkaededb_vector_tombstones {}\nkaededb_hnsw_ready {}\nkaededb_ef_search {}\nkaededb_ef_construction {}\nkaededb_link_top_k {}\n",
+        "kaededb_docs {}\nkaededb_rows {}\nkaededb_vectors {}\nkaededb_vector_tombstones {}\nkaededb_hnsw_ready {}\nkaededb_ef_search {}\nkaededb_ef_construction {}\nkaededb_link_top_k {}\nkaededb_shard_id {}\nkaededb_shard_total {}\n",
         m.docs,
         m.rows,
         m.vectors,
@@ -495,6 +523,8 @@ async fn metrics(
         m.ef_search,
         m.ef_construction,
         m.link_top_k,
+        m.shard_id,
+        m.shard_total,
     );
     let resp = (
         [(
@@ -509,6 +539,7 @@ async fn metrics(
 #[derive(Debug)]
 enum ApiError {
     NotFound,
+    WrongShard,
     Internal(anyhow::Error),
 }
 
@@ -516,6 +547,7 @@ impl From<KaedeDbError> for ApiError {
     fn from(value: KaedeDbError) -> Self {
         match value {
             KaedeDbError::NotFound => ApiError::NotFound,
+            KaedeDbError::WrongShard => ApiError::WrongShard,
             other => ApiError::Internal(anyhow::Error::new(other)),
         }
     }
@@ -526,6 +558,7 @@ impl axum::response::IntoResponse for ApiError {
         use axum::http::StatusCode;
         match self {
             ApiError::NotFound => StatusCode::NOT_FOUND.into_response(),
+            ApiError::WrongShard => StatusCode::CONFLICT.into_response(),
             ApiError::Internal(err) => {
                 tracing::error!("api_error" = %err);
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()

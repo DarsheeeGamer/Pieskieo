@@ -6,10 +6,7 @@ use uuid::Uuid;
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    let n: usize = args
-        .get(1)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(50_000);
+    let n: usize = args.get(1).and_then(|s| s.parse().ok()).unwrap_or(50_000);
     let dim: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(128);
     let ef_c: usize = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(200);
     let ef_s: usize = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(50);
