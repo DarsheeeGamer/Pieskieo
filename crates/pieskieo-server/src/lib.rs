@@ -1,35 +1,46 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use axum::extract::DefaultBodyLimit;
 use axum::{
     body::Body,
     extract::{Path, Query, State},
     http::Request,
     middleware::{self, Next},
     routing::{delete, get, post},
-    Json, Router, Extension,
+    Extension, Json, Router,
 };
-use sqlparser::{dialect::GenericDialect, parser::Parser};
-use futures::future::join_all;
-use pieskieo_core::{
-    PieskieoDb, PieskieoError, SchemaDef, SchemaField, SqlResult, VectorParams as PieskieoVectorParams,
-};
-use serde::{Deserialize, Serialize};
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
-use std::path::PathBuf;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use futures::future::join_all;
+use pieskieo_core::{
+    PieskieoDb, PieskieoError, SchemaDef, SchemaField, SqlResult,
+    VectorParams as PieskieoVectorParams,
+};
 use rand_core::OsRng;
-use axum::extract::DefaultBodyLimit;
-use tokio::net::TcpListener;
+use serde::{Deserialize, Serialize};
+use sqlparser::{dialect::GenericDialect, parser::Parser};
+use std::path::PathBuf;
+use tokio::{net::TcpListener, sync::RwLock};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
+
+#[cfg(feature = "tls")]
+use {
+    axum_server::tls_rustls::RustlsConfig,
+    rustls::{Certificate, PrivateKey},
+    rustls_pemfile::{certs, read_all, Item},
+    std::fs::File,
+    std::io::BufReader,
+};
 
 #[derive(Clone)]
 struct AppState {
     pool: Arc<DbPool>,
-    auth: Arc<AuthConfig>,
+    auth: Arc<RwLock<AuthConfig>>,
 }
 
 #[derive(Clone)]
@@ -37,6 +48,10 @@ struct AuthConfig {
     users: Vec<UserRec>,
     bearer: Option<String>,
     path: PathBuf,
+    attempts: Arc<Mutex<HashMap<String, Attempt>>>,
+    max_failures: u32,
+    lockout: Duration,
+    window: Duration,
 }
 
 #[derive(Clone)]
@@ -46,8 +61,14 @@ struct UserRec {
     role: Role,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+struct Attempt {
+    count: u32,
+    first: Instant,
+    locked_until: Option<Instant>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Role {
     Admin,
     Write,
@@ -59,18 +80,37 @@ impl AuthConfig {
         // primary multi-user source: PIESKIEO_USERS as JSON array [{user,pass,role}]
         let mut users = Vec::new();
         let path = PathBuf::from(data_dir).join("auth_users.json");
-            if let Ok(json) = std::env::var("PIESKIEO_USERS") {
-                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json) {
-                    if let Some(arr) = val.as_array() {
-                        for item in arr {
-                            if let (Some(u), Some(p)) =
-                                (item.get("user").and_then(|v| v.as_str()), item.get("pass").and_then(|v| v.as_str()))
-                            {
-                                let role = item
-                                    .get("role")
-                                    .and_then(|v| v.as_str())
-                                    .map(Self::parse_role)
-                                    .unwrap_or(Role::Read);
+        let max_failures = std::env::var("PIESKIEO_AUTH_MAX_FAILURES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(5);
+        let lockout = std::env::var("PIESKIEO_AUTH_LOCKOUT_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .map(Duration::from_secs)
+            .unwrap_or_else(|| Duration::from_secs(300));
+        let window = std::env::var("PIESKIEO_AUTH_WINDOW_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .map(Duration::from_secs)
+            .unwrap_or_else(|| Duration::from_secs(900));
+        if let Ok(json) = std::env::var("PIESKIEO_USERS") {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&json) {
+                if let Some(arr) = val.as_array() {
+                    for item in arr {
+                        if let (Some(u), Some(p)) = (
+                            item.get("user").and_then(|v| v.as_str()),
+                            item.get("pass").and_then(|v| v.as_str()),
+                        ) {
+                            if let Err(msg) = Self::validate_password(p) {
+                                tracing::warn!("skipping user {} from PIESKIEO_USERS: {}", u, msg);
+                                continue;
+                            }
+                            let role = item
+                                .get("role")
+                                .and_then(|v| v.as_str())
+                                .map(Self::parse_role)
+                                .unwrap_or(Role::Read);
                             users.push(UserRec {
                                 user: u.to_string(),
                                 password_hash: Self::hash_password(p),
@@ -85,11 +125,15 @@ impl AuthConfig {
         if users.is_empty() {
             if let Ok(u) = std::env::var("PIESKIEO_AUTH_USER") {
                 if let Ok(p) = std::env::var("PIESKIEO_AUTH_PASSWORD") {
-                    users.push(UserRec {
-                        user: u,
-                        password_hash: Self::hash_password(&p),
-                        role: Role::Admin,
-                    });
+                    if let Err(msg) = Self::validate_password(&p) {
+                        tracing::warn!("skipping PIESKIEO_AUTH_USER {}: {}", u, msg);
+                    } else {
+                        users.push(UserRec {
+                            user: u,
+                            password_hash: Self::hash_password(&p),
+                            role: Role::Admin,
+                        });
+                    }
                 }
             }
         }
@@ -116,7 +160,15 @@ impl AuthConfig {
                 role: Role::Admin,
             });
         }
-        Self { users, bearer, path }
+        Self {
+            users,
+            bearer,
+            path,
+            attempts: Arc::new(Mutex::new(HashMap::new())),
+            max_failures,
+            lockout,
+            window,
+        }
     }
 
     fn enabled(&self) -> bool {
@@ -129,6 +181,31 @@ impl AuthConfig {
             "write" | "writer" => Role::Write,
             _ => Role::Read,
         }
+    }
+
+    fn validate_password(pass: &str) -> Result<(), String> {
+        if pass.len() < 8 {
+            return Err("password must be at least 8 characters".into());
+        }
+        let mut has_upper = false;
+        let mut has_lower = false;
+        let mut has_digit = false;
+        let mut has_symbol = false;
+        for ch in pass.chars() {
+            if ch.is_ascii_uppercase() {
+                has_upper = true;
+            } else if ch.is_ascii_lowercase() {
+                has_lower = true;
+            } else if ch.is_ascii_digit() {
+                has_digit = true;
+            } else {
+                has_symbol = true;
+            }
+        }
+        if !(has_upper && has_lower && has_digit && has_symbol) {
+            return Err("password must contain upper, lower, digit, and symbol characters".into());
+        }
+        Ok(())
     }
 
     fn persist(&self) {
@@ -147,7 +224,11 @@ impl AuthConfig {
             })
             .collect();
         if let Ok(txt) = serde_json::to_string_pretty(&disk) {
-            let _ = std::fs::create_dir_all(self.path.parent().unwrap_or_else(|| std::path::Path::new(".")));
+            let _ = std::fs::create_dir_all(
+                self.path
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new(".")),
+            );
             let _ = std::fs::write(&self.path, txt);
         }
     }
@@ -173,6 +254,56 @@ impl AuthConfig {
         } else {
             false
         }
+    }
+
+    fn check_lockout(&self, user: &str) -> bool {
+        let mut map = self.attempts.lock().unwrap();
+        if let Some(state) = map.get_mut(user) {
+            let now = Instant::now();
+            if let Some(until) = state.locked_until {
+                if now < until {
+                    return true;
+                } else {
+                    state.locked_until = None;
+                    state.count = 0;
+                    state.first = now;
+                }
+            }
+            if now.duration_since(state.first) > self.window {
+                state.count = 0;
+                state.first = now;
+            }
+        }
+        false
+    }
+
+    fn record_failure(&self, user: &str) {
+        let mut map = self.attempts.lock().unwrap();
+        let now = Instant::now();
+        let entry = map.entry(user.to_string()).or_insert(Attempt {
+            count: 0,
+            first: now,
+            locked_until: None,
+        });
+        if now.duration_since(entry.first) > self.window {
+            entry.count = 0;
+            entry.first = now;
+        }
+        entry.count += 1;
+        if entry.count >= self.max_failures {
+            entry.locked_until = Some(now + self.lockout);
+            tracing::warn!(
+                "user {} locked out for {:?} after {} failures",
+                user,
+                self.lockout,
+                entry.count
+            );
+        }
+    }
+
+    fn record_success(&self, user: &str) {
+        let mut map = self.attempts.lock().unwrap();
+        map.remove(user);
     }
 }
 
@@ -374,7 +505,7 @@ pub async fn serve() -> anyhow::Result<()> {
         .init();
 
     let data_dir = std::env::var("PIESKIEO_DATA").unwrap_or_else(|_| "data".to_string());
-    let auth = Arc::new(AuthConfig::from_env(&data_dir));
+    let auth = Arc::new(RwLock::new(AuthConfig::from_env(&data_dir)));
     let params = vector_params_from_env();
     let shards = params.shard_total.max(1);
     let pool = Arc::new(DbPool::new(&data_dir, params, shards)?);
@@ -483,6 +614,28 @@ pub async fn serve() -> anyhow::Result<()> {
     let addr: SocketAddr = std::env::var("PIESKIEO_LISTEN")
         .unwrap_or_else(|_| "0.0.0.0:8000".into())
         .parse()?;
+
+    let tls_files = (
+        std::env::var("PIESKIEO_TLS_CERT").ok(),
+        std::env::var("PIESKIEO_TLS_KEY").ok(),
+    );
+
+    if let (Some(cert), Some(key)) = tls_files {
+        #[cfg(feature = "tls")]
+        {
+            let config = load_rustls_config(&cert, &key)?;
+            tracing::info!(%addr, cert=%cert, key=%key, "listening with TLS");
+            axum_server::bind_rustls(addr, config)
+                .serve(app.into_make_service())
+                .await?;
+            return Ok(());
+        }
+        #[cfg(not(feature = "tls"))]
+        {
+            let _ = (cert, key);
+            tracing::warn!("TLS paths provided but pieskieo-server built without `tls` feature; falling back to plaintext");
+        }
+    }
 
     tracing::info!(%addr, "listening (plaintext)");
     let listener = TcpListener::bind(addr).await?;
@@ -679,13 +832,13 @@ async fn query_sql(
         sqlparser::ast::Statement::Update { .. } | sqlparser::ast::Statement::Delete { .. } => {
             let mut affected = 0usize;
             for shard in state.pool.each() {
-            match shard.query_sql(&input.sql)? {
-                SqlResult::Update { affected: a } | SqlResult::Delete { affected: a } => {
-                    affected += a;
+                match shard.query_sql(&input.sql)? {
+                    SqlResult::Update { affected: a } | SqlResult::Delete { affected: a } => {
+                        affected += a;
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        }
             Ok(Json(ApiResponse {
                 ok: true,
                 data: serde_json::json!({ "kind": "write", "affected": affected }),
@@ -1128,17 +1281,18 @@ async fn metrics(
 }
 
 async fn auth_middleware(
-    State(auth): State<Arc<AuthConfig>>,
+    State(auth): State<Arc<RwLock<AuthConfig>>>,
     req: Request<Body>,
     next: Next,
 ) -> Result<axum::response::Response, ApiError> {
-    if !auth.enabled() {
+    let auth_guard = auth.read().await;
+    if !auth_guard.enabled() {
         return Ok(next.run(req).await);
     }
     if let Some(header) = req.headers().get(axum::http::header::AUTHORIZATION) {
         if let Ok(val) = header.to_str() {
             if let Some(tok) = val.strip_prefix("Bearer ") {
-                if let Some(expected) = &auth.bearer {
+                if let Some(expected) = &auth_guard.bearer {
                     if tok == expected {
                         return Ok(next.run(req).await);
                     }
@@ -1148,9 +1302,13 @@ async fn auth_middleware(
                 if let Ok(decoded) = B64.decode(basic) {
                     if let Ok(s) = String::from_utf8(decoded) {
                         if let Some((u, p)) = s.split_once(':') {
-                            if let Some(user) =
-                                auth.users.iter().find(|usr| usr.user == u && AuthConfig::verify_password(&usr.password_hash, p))
-                            {
+                            if auth_guard.check_lockout(u) {
+                                return Err(ApiError::Unauthorized);
+                            }
+                            if let Some(user) = auth_guard.users.iter().find(|usr| {
+                                usr.user == u && AuthConfig::verify_password(&usr.password_hash, p)
+                            }) {
+                                auth_guard.record_success(u);
                                 if authorize(user.role, req.uri().path(), req.method().as_str()) {
                                     let mut req = req;
                                     req.extensions_mut().insert(user.role);
@@ -1158,6 +1316,8 @@ async fn auth_middleware(
                                 } else {
                                     return Err(ApiError::Forbidden);
                                 }
+                            } else {
+                                auth_guard.record_failure(u);
                             }
                         }
                     }
@@ -1211,6 +1371,29 @@ fn is_write_path(path: &str, method: &str) -> bool {
     false
 }
 
+#[cfg(feature = "tls")]
+fn load_rustls_config(cert_path: &str, key_path: &str) -> anyhow::Result<RustlsConfig> {
+    let certfile = File::open(cert_path)?;
+    let mut reader = BufReader::new(certfile);
+    let certs: Vec<Certificate> = certs(&mut reader)?.into_iter().map(Certificate).collect();
+
+    let keyfile = File::open(key_path)?;
+    let mut reader = BufReader::new(keyfile);
+    let mut keys = Vec::new();
+    for item in read_all(&mut reader)? {
+        match item {
+            Item::Pkcs8Key(key) | Item::RsaKey(key) => keys.push(PrivateKey(key)),
+            _ => {}
+        }
+    }
+    let key = keys
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("no private key found in {}", key_path))?;
+
+    Ok(RustlsConfig::from_der(certs, key)?)
+}
+
 #[derive(Debug)]
 enum ApiError {
     NotFound,
@@ -1260,13 +1443,16 @@ async fn list_users(
     if !matches!(role, Role::Admin) {
         return Err(ApiError::Forbidden);
     }
-    let users = state
-        .auth
+    let auth = state.auth.read().await;
+    let users = auth
         .users
         .iter()
         .map(|u| format!("{} ({:?})", u.user, u.role))
         .collect();
-    Ok(Json(ApiResponse { ok: true, data: users }))
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: users,
+    }))
 }
 
 async fn create_user(
@@ -1277,12 +1463,10 @@ async fn create_user(
     if !matches!(role, Role::Admin) {
         return Err(ApiError::Forbidden);
     }
-    if input.pass.len() < 8 {
-        return Err(ApiError::BadRequest(
-            "password must be at least 8 characters".into(),
-        ));
+    if let Err(msg) = AuthConfig::validate_password(&input.pass) {
+        return Err(ApiError::BadRequest(msg));
     }
-    let mut auth = state.auth.as_ref().clone();
+    let mut auth = state.auth.write().await;
     let role = input
         .role
         .as_deref()
@@ -1294,7 +1478,8 @@ async fn create_user(
         role,
     });
     auth.persist();
-    // replace shared auth
-    *Arc::get_mut(&mut Arc::clone(&state.auth)).unwrap() = auth;
-    Ok(Json(ApiResponse { ok: true, data: "created" }))
+    Ok(Json(ApiResponse {
+        ok: true,
+        data: "created",
+    }))
 }

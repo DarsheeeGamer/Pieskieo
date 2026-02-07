@@ -7,22 +7,39 @@ A Rust-first multimodal database engine combining document (Mongo-like), row (Po
 - `crates/pieskieo-server`: Axum HTTP API with transparent intra-process sharding and fan-out search, metrics, and load generator (`src/bin/load.rs`).
 - `tools/`: local toolchain helpers (mingw/llvm downloads).
 
-## Build & run (Windows)
-1. Rust toolchain installed.
-2. Linker: VS Build Tools (Desktop C++) **or** MinGW (set `PATH` to MinGW bin).
-3. Build: `cargo build --release`
-4. Run server (HTTP API):
+## PQL (Pieskieo Query Language)
+- SQL-ish syntax over all models: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, aliases, multi `ORDER BY`, aggregates (`COUNT/SUM/AVG/MIN/MAX`), equality `JOIN`.
+- Works for rows and docs; vector search is JSON API today, PQL hooks coming.
+- Example:
+```sql
+SELECT u.id, o.total
+FROM users u
+JOIN orders o ON u.id = o.user_id
+WHERE o.total > 50
+ORDER BY o.total DESC;
 ```
-PIESKIEO_DATA=./data \
-PIESKIEO_LISTEN=0.0.0.0:8000 \
-PIESKIEO_SHARD_TOTAL=1 \
-PIESKIEO_EF_SEARCH=50 \
-PIESKIEO_EF_CONSTRUCTION=200 \
+
+## Build & run (Windows)
+1) Rust toolchain installed.  
+2) Linker: VS Build Tools (Desktop C++) **or** MinGW (`tools/mingw64/bin` on PATH).  
+3) Build: `cargo build --release`  
+4) Run server (HTTP API, plaintext):
+```powershell
+$env:PIESKIEO_DATA=".\data"
+$env:PIESKIEO_LISTEN="0.0.0.0:8000"
 cargo run -p pieskieo-server --release
 ```
-5. CLI (embedded or server starter):
-   - Embedded shell: `cargo run -p pieskieo-cli -- --repl`
-   - Start server via CLI: `cargo run -p pieskieo-cli -- --serve --data-dir ./data --listen 0.0.0.0:8000`
+5) Enable TLS (requires `--features tls` at build time):
+```powershell
+$env:PIESKIEO_TLS_CERT="certs/server.crt"
+$env:PIESKIEO_TLS_KEY="certs/server.key"
+cargo run -p pieskieo-server --release --features tls
+```
+6) CLI (network shell, psql‑style):
+```powershell
+cargo run -p pieskieo-cli -- --connect pieskieo@localhost --port 8000 -W
+```
+`-W` prompts for password; use bearer with `-t <token>`. The REPL accepts raw PQL.
 
 ## Key features
 - HNSW ANN with persistence (graph + revmap saved/reloaded).
@@ -50,6 +67,28 @@ cargo run -p pieskieo-server --release
 - Graph: `POST /v1/graph/edge` `{src,dst,weight?}`, `GET /v1/graph/:id`
 - Shard info: `GET /v1/shard/which/:id`
 - Metrics: `GET /metrics`
+
+## Auth & security
+- Default admin (only if nothing configured): user `Pieskieo` / password `pieskieo`.
+- Production: set users via `PIESKIEO_USERS='[{"user":"alice","pass":"S3cure!Pwd","role":"admin"}]'`
+  or `PIESKIEO_AUTH_USER` / `PIESKIEO_AUTH_PASSWORD`.
+- Passwords are Argon2id hashed; creation enforces upper+lower+digit+symbol and length ≥ 8.
+- Lockout: 5 failed attempts within 15 minutes triggers a 5 minute lock (tunable via `PIESKIEO_AUTH_*` envs).
+- Basic auth for per-user, Bearer token via `PIESKIEO_TOKEN` for admin automation.
+- Enable TLS with `PIESKIEO_TLS_CERT` / `PIESKIEO_TLS_KEY` (PEM).
+
+## CLI quickstart
+- Connect: `pieskieo connect alice@db.example.com --port 8443 -W`
+- Server starter: `pieskieo connect --serve --data-dir ./data --listen 0.0.0.0:8000`
+- REPL commands: raw PQL; `\q` to quit; `\timing` to toggle timings.
+
+## Config essentials (env)
+- `PIESKIEO_DATA` data dir (default `./data`)
+- `PIESKIEO_LISTEN` listen addr (default `0.0.0.0:8000`)
+- `PIESKIEO_SHARD_TOTAL` shard count (default 1)
+- `PIESKIEO_EF_SEARCH` / `PIESKIEO_EF_CONSTRUCTION` HNSW knobs
+- `PIESKIEO_BODY_LIMIT_MB` request body limit (default 10)
+- `PIESKIEO_TLS_CERT`, `PIESKIEO_TLS_KEY` enable TLS (requires `--features tls`)
 
 ## Benchmark tools
 - Core bench: `cargo run -p pieskieo-core --bin bench --release -- <n> <dim> [ef_c] [ef_s]`
