@@ -103,6 +103,18 @@ main() {
   log "[installer] installing binaries to ${bindst}"
   install -m 0755 "$tmp"/pieskieo* "$bindst"/
 
+  # Wrap CLI so non-root users default to user-local data dir.
+  if [[ -f "${bindst}/pieskieo" ]]; then
+    mv "${bindst}/pieskieo" "${bindst}/pieskieo-bin"
+    cat > "${bindst}/pieskieo" <<'EOSH'
+#!/usr/bin/env bash
+export PIESKIEO_DATA="${PIESKIEO_DATA:-$HOME/.local/share/pieskieo}"
+exec "$(dirname "$0")/pieskieo-bin" "$@"
+EOSH
+    chmod 0755 "${bindst}/pieskieo"
+    log "[installer] wrapped pieskieo to default PIESKIEO_DATA=$HOME/.local/share/pieskieo"
+  fi
+
   log "[installer] contents installed to $bindst:"
   ls "$bindst"/pieskieo*
   log "[installer] done. Ensure $bindst is on your PATH."
