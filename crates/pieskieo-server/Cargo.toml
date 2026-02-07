@@ -15,7 +15,6 @@ anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 axum.workspace = true
-tower.workspace = true
 uuid.workspace = true
 futures = "0.3"
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
@@ -24,3 +23,9 @@ sqlparser.workspace = true
 base64 = "0.21"
 argon2 = "0.5"
 rand_core = "0.6"
+tokio-stream = { version = "0.1", features = ["net"] }
+tokio-rustls = "0.24"
+rustls = "0.21"
+rustls-pemfile = "1"
+tower = { workspace = true, features = ["limit"] }
+hyper = { version = "1", features = ["server", "http1", "http2"] }

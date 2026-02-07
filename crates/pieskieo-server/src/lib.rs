@@ -21,6 +21,7 @@ use base64::Engine;
 use std::path::PathBuf;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use rand_core::OsRng;
+use axum::extract::DefaultBodyLimit;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
@@ -469,14 +470,22 @@ pub async fn serve() -> anyhow::Result<()> {
             state.auth.clone(),
             auth_middleware,
         ))
+        .layer(DefaultBodyLimit::max(
+            std::env::var("PIESKIEO_BODY_LIMIT_MB")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(10)
+                * 1024
+                * 1024,
+        ))
         .with_state(state);
 
     let addr: SocketAddr = std::env::var("PIESKIEO_LISTEN")
         .unwrap_or_else(|_| "0.0.0.0:8000".into())
         .parse()?;
 
+    tracing::info!(%addr, "listening (plaintext)");
     let listener = TcpListener::bind(addr).await?;
-    tracing::info!(%addr, "listening");
     axum::serve(listener, app).await?;
     Ok(())
 }
