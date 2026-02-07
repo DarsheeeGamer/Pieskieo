@@ -17,18 +17,22 @@ jobs:
             target: x86_64-unknown-linux-gnu
             bin-suffix: ""
             archive: linux-x86_64
+            rustflags: ""
           - os: macos-14
             target: aarch64-apple-darwin
             bin-suffix: ""
             archive: macos-arm64
+            rustflags: ""
           - os: macos-14
             target: x86_64-apple-darwin
             bin-suffix: ""
             archive: macos-x86_64
+            rustflags: ""
           - os: windows-2022
             target: x86_64-pc-windows-gnu
             bin-suffix: ".exe"
             archive: windows-x86_64
+            rustflags: "-Clink-self-contained=yes"
 
     steps:
       - uses: actions/checkout@v4
@@ -47,23 +51,23 @@ jobs:
         run: brew install pkg-config
 
       - name: Build release
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
         run: |
-          if [ "${{ matrix.target }}" = "x86_64-pc-windows-gnu" ]; then
-            export RUSTFLAGS="-Clink-self-contained=yes"
-          fi
           cargo build --release --target ${{ matrix.target }} --locked
 
       - name: Package
+        shell: bash
         run: |
           mkdir -p dist
           BIN_DIR=target/${{ matrix.target }}/release
           VERSION=${GITHUB_REF_NAME}
           ARCHIVE=pieskieo-${{ matrix.archive }}-${VERSION}.zip
           zip -j dist/$ARCHIVE \
-            $BIN_DIR/pieskieo${{ matrix.bin-suffix }} \
-            $BIN_DIR/pieskieo-server${{ matrix.bin-suffix }} \
-            $BIN_DIR/load${{ matrix.bin-suffix }} \
-            $BIN_DIR/bench${{ matrix.bin-suffix }}
+            "$BIN_DIR/pieskieo${{ matrix.bin-suffix }}" \
+            "$BIN_DIR/pieskieo-server${{ matrix.bin-suffix }}" \
+            "$BIN_DIR/load${{ matrix.bin-suffix }}" \
+            "$BIN_DIR/bench${{ matrix.bin-suffix }}"
           echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
 
       - name: Upload artifact
