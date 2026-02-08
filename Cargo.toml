@@ -2,6 +2,7 @@
 members = [
     "crates/pieskieo-core",
     "crates/pieskieo-cli",
+    "crates/pieskieo-server",
 ]
 resolver = "2"
 
@@ -33,4 +34,6 @@ async-trait = "0.1"
 tempfile = "3"
 rayon = "1.10"
 hnsw_rs = "0.3.3"
+axum = "0.7"
+tower = "0.5"
 

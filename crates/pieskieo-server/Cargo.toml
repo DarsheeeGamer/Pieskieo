@@ -1,0 +1,49 @@
+[package]
+name = "pieskieo-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+pieskieo-core = { path = "../pieskieo-core" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+dirs.workspace = true
+axum = { workspace = true, features = ["ws"] }
+uuid.workspace = true
+futures = "0.3"
+reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+rand.workspace = true
+sqlparser.workspace = true
+base64 = "0.21"
+argon2 = "0.5"
+rand_core = "0.6"
+tokio-stream = { version = "0.1", optional = true, features = ["net"] }
+tokio-rustls = { version = "0.24", optional = true }
+rustls = { version = "0.21", optional = true }
+rustls-pemfile = { version = "1", optional = true }
+tower = { workspace = true }
+hyper = { version = "1", optional = true, features = ["server", "http1", "http2"] }
+axum-server = { version = "0.6", optional = true, features = ["rustls"] }
+chrono = "0.4"
+bincode = "1"
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
+tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
+
+[features]
+default = []
+tls = [
+    "tokio-stream",
+    "tokio-rustls",
+    "rustls",
+    "rustls-pemfile",
+    "hyper",
+    "axum-server",
+]

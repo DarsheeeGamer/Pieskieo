@@ -16,8 +16,6 @@ pub enum PieskieoError {
     Validation(String),
     #[error("unique constraint violation on field '{0}'")]
     UniqueViolation(String),
-    #[error("transaction conflict: {0}")]
-    Conflict(String),
     #[error("internal error: {0}")]
     Internal(String),
 }

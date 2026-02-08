@@ -1,8 +1,5 @@
 use crate::error::Result;
-use crate::session::{SessionId, SessionManager};
-use crate::transaction::{IsolationLevel, TransactionId, TransactionManager, TransactionSnapshot};
 use crate::vector::{VectorIndex, VectorMetric};
-use crate::versioned_storage::VersionedStorage;
 use crate::wal::{DataFamily, RecordKind, Wal};
 use crate::{error::PieskieoError, graph::GraphStore};
 use parking_lot::RwLock;
@@ -21,10 +18,9 @@ use uuid::Uuid;
 
 #[derive(Default)]
 pub(crate) struct Collections {
-    // MVCC-enabled storage: namespace -> collection/table -> VersionedStorage
-    // Each VersionedStorage manages ALL keys in that collection with their version chains
-    rows: HashMap<String, HashMap<String, Arc<VersionedStorage>>>,
-    docs: HashMap<String, HashMap<String, Arc<VersionedStorage>>>,
+    // namespace -> collection/table -> (id -> payload)
+    rows: HashMap<String, HashMap<String, BTreeMap<Uuid, Value>>>,
+    docs: HashMap<String, HashMap<String, BTreeMap<Uuid, Value>>>,
     // simple equality secondary index: ns -> collection -> field -> value_json -> ids
     row_index: HashMap<String, HashMap<String, HashMap<String, HashMap<String, Vec<Uuid>>>>>,
     doc_index: HashMap<String, HashMap<String, HashMap<String, HashMap<String, Vec<Uuid>>>>>,
@@ -38,10 +34,6 @@ pub struct PieskieoDb {
     pub(crate) wal: RwLock<Wal>,
     pub(crate) data: Arc<RwLock<Collections>>,
     stats: Arc<RwLock<Stats>>,
-    // Transaction manager for MVCC
-    pub(crate) txn_manager: Arc<TransactionManager>,
-    // Session manager for tracking connection state (set by TCP server)
-    pub(crate) session_manager: RwLock<Option<Arc<SessionManager>>>,
     // namespace -> vector index
     pub(crate) vectors: Arc<RwLock<HashMap<String, Arc<VectorIndex>>>>,
     // vector id -> namespace (for auto-link + delete convenience)
@@ -80,10 +72,6 @@ pub enum SqlResult {
     Insert { ids: Vec<Uuid> },
     Update { affected: usize },
     Delete { affected: usize },
-    // Transaction control
-    Begin { txn_id: TransactionId },
-    Commit,
-    Rollback,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -230,11 +218,7 @@ impl PieskieoDb {
         Ok(())
     }
 
-    fn exec_insert(
-        &self,
-        stmt: &Statement,
-        txn_context: Option<(TransactionId, TransactionSnapshot)>,
-    ) -> Result<SqlResult> {
+    fn exec_insert(&self, stmt: &Statement) -> Result<SqlResult> {
         let insert = match stmt {
             Statement::Insert {
                 table_name,
@@ -299,23 +283,15 @@ impl PieskieoDb {
             }
         }
         let uid = id.unwrap_or_else(Uuid::new_v4);
-
-        // Extract transaction ID from context
-        let txn_id = txn_context.map(|(tid, _)| tid);
-
         if target_rows {
-            self.put_row_ns_txn(Some(&ns), Some(&coll), uid, &Value::Object(obj), txn_id)?;
+            self.put_row_ns(Some(&ns), Some(&coll), uid, &Value::Object(obj))?;
         } else {
-            self.put_doc_ns_txn(Some(&ns), Some(&coll), uid, Value::Object(obj), txn_id)?;
+            self.put_doc_ns(Some(&ns), Some(&coll), uid, Value::Object(obj))?;
         }
         Ok(SqlResult::Insert { ids: vec![uid] })
     }
 
-    fn exec_update(
-        &self,
-        stmt: &Statement,
-        txn_context: Option<(TransactionId, TransactionSnapshot)>,
-    ) -> Result<SqlResult> {
+    fn exec_update(&self, stmt: &Statement) -> Result<SqlResult> {
         let (table, assignments, selection) = match stmt {
             Statement::Update {
                 table,
@@ -335,23 +311,7 @@ impl PieskieoDb {
         } else {
             Vec::new()
         };
-
-        // Create snapshot for MVCC visibility
-        let snapshot = if let Some((_, snap)) = txn_context.as_ref() {
-            snap.clone()
-        } else {
-            // No transaction: see all committed data
-            TransactionSnapshot {
-                xmin: 0,
-                xmax: u64::MAX,
-                active_txns: vec![],
-            }
-        };
-
-        // Extract transaction ID
-        let txn_id = txn_context.map(|(tid, _)| tid);
-
-        // collect matches with snapshot-based visibility
+        // collect matches
         let matches: Vec<(Uuid, Value)> = {
             let guard = self.data.read();
             if target_rows {
@@ -359,14 +319,14 @@ impl PieskieoDb {
                     .rows
                     .get(&ns)
                     .and_then(|m| m.get(&coll))
-                    .map(|map| self.filter_conditions(map, &conds, usize::MAX, 0, &snapshot))
+                    .map(|map| self.filter_conditions(map, &conds, usize::MAX, 0))
                     .unwrap_or_default()
             } else {
                 guard
                     .docs
                     .get(&ns)
                     .and_then(|m| m.get(&coll))
-                    .map(|map| self.filter_conditions(map, &conds, usize::MAX, 0, &snapshot))
+                    .map(|map| self.filter_conditions(map, &conds, usize::MAX, 0))
                     .unwrap_or_default()
             }
         };
@@ -387,20 +347,16 @@ impl PieskieoDb {
                 }
             }
             if target_rows {
-                self.put_row_ns_txn(Some(&ns), Some(&coll), id, &val, txn_id)?;
+                self.put_row_ns(Some(&ns), Some(&coll), id, &val)?;
             } else {
-                self.put_doc_ns_txn(Some(&ns), Some(&coll), id, val, txn_id)?;
+                self.put_doc_ns(Some(&ns), Some(&coll), id, val)?;
             }
             affected += 1;
         }
         Ok(SqlResult::Update { affected })
     }
 
-    fn exec_delete(
-        &self,
-        stmt: &Statement,
-        txn_context: Option<(TransactionId, TransactionSnapshot)>,
-    ) -> Result<SqlResult> {
+    fn exec_delete(&self, stmt: &Statement) -> Result<SqlResult> {
         let (tables, selection) = match stmt {
             Statement::Delete {
                 tables, selection, ..
@@ -419,22 +375,6 @@ impl PieskieoDb {
         } else {
             Vec::new()
         };
-
-        // Create snapshot for MVCC visibility
-        let snapshot = if let Some((_, snap)) = txn_context.as_ref() {
-            snap.clone()
-        } else {
-            // No transaction: see all committed data
-            TransactionSnapshot {
-                xmin: 0,
-                xmax: u64::MAX,
-                active_txns: vec![],
-            }
-        };
-
-        // Extract transaction ID
-        let txn_id = txn_context.map(|(tid, _)| tid);
-
         let matches: Vec<Uuid> = {
             let guard = self.data.read();
             if target_rows {
@@ -442,7 +382,7 @@ impl PieskieoDb {
                     .rows
                     .get(&ns)
                     .and_then(|m| m.get(&coll))
-                    .map(|map| self.filter_conditions(map, &conds, usize::MAX, 0, &snapshot))
+                    .map(|map| self.filter_conditions(map, &conds, usize::MAX, 0))
                     .unwrap_or_default()
                     .into_iter()
                     .map(|(id, _)| id)
@@ -452,7 +392,7 @@ impl PieskieoDb {
                     .docs
                     .get(&ns)
                     .and_then(|m| m.get(&coll))
-                    .map(|map| self.filter_conditions(map, &conds, usize::MAX, 0, &snapshot))
+                    .map(|map| self.filter_conditions(map, &conds, usize::MAX, 0))
                     .unwrap_or_default()
                     .into_iter()
                     .map(|(id, _)| id)
@@ -461,9 +401,9 @@ impl PieskieoDb {
         };
         for id in &matches {
             if target_rows {
-                self.delete_row_ns_txn(Some(&ns), Some(&coll), id, txn_id)?;
+                self.delete_row_ns(Some(&ns), Some(&coll), id)?;
             } else {
-                self.delete_doc_ns_txn(Some(&ns), Some(&coll), id, txn_id)?;
+                self.delete_doc_ns(Some(&ns), Some(&coll), id)?;
             }
         }
         Ok(SqlResult::Delete {
@@ -525,18 +465,13 @@ impl PieskieoDb {
                         let col = collection.unwrap_or_else(Self::default_ns);
                         let v: Value = serde_json::from_slice(&payload)?;
                         let mut guard = data.write();
-
-                        // Get or create VersionedStorage for this collection
-                        let storage = guard
+                        guard
                             .docs
                             .entry(ns.clone())
                             .or_default()
                             .entry(col.clone())
-                            .or_insert_with(|| Arc::new(VersionedStorage::new()));
-
-                        // WAL replay: Insert with bootstrap transaction (TXN 0)
-                        storage.insert(key, v.clone(), 0).ok(); // Ignore errors during replay
-
+                            .or_default()
+                            .insert(key, v.clone());
                         Self::index_upsert_doc(&mut guard, ns, col, key, &v);
                     }
                     DataFamily::Row => {
@@ -544,18 +479,13 @@ impl PieskieoDb {
                         let table = table.unwrap_or_else(Self::default_ns);
                         let v: Value = serde_json::from_slice(&payload)?;
                         let mut guard = data.write();
-
-                        // Get or create VersionedStorage for this table
-                        let storage = guard
+                        guard
                             .rows
                             .entry(ns.clone())
                             .or_default()
                             .entry(table.clone())
-                            .or_insert_with(|| Arc::new(VersionedStorage::new()));
-
-                        // WAL replay: Insert with bootstrap transaction (TXN 0)
-                        storage.insert(key, v.clone(), 0).ok(); // Ignore errors during replay
-
+                            .or_default()
+                            .insert(key, v.clone());
                         Self::index_upsert_row(&mut guard, ns, table, key, &v);
                     }
                     DataFamily::Vec => match bincode::deserialize::<VecWalRecord>(&payload) {
@@ -599,16 +529,8 @@ impl PieskieoDb {
                         let col = collection.unwrap_or_else(Self::default_ns);
                         let mut guard = data.write();
                         if let Some(map) = guard.docs.get_mut(&ns) {
-                            if let Some(storage) = map.get_mut(&col) {
-                                // Get current value before deleting (for index removal)
-                                let snapshot = TransactionSnapshot {
-                                    xmin: 0,
-                                    xmax: 1, // See only TXN 0
-                                    active_txns: vec![],
-                                };
-                                if let Ok(Some(old)) = storage.get(&key, &snapshot) {
-                                    // Soft-delete with bootstrap transaction (TXN 0)
-                                    storage.delete(&key, 0).ok();
+                            if let Some(c) = map.get_mut(&col) {
+                                if let Some(old) = c.remove(&key) {
                                     Self::index_remove_doc(&mut guard, ns, col, &key, &old);
                                 }
                             }
@@ -619,16 +541,8 @@ impl PieskieoDb {
                         let tbl = table.unwrap_or_else(Self::default_ns);
                         let mut guard = data.write();
                         if let Some(map) = guard.rows.get_mut(&ns) {
-                            if let Some(storage) = map.get_mut(&tbl) {
-                                // Get current value before deleting (for index removal)
-                                let snapshot = TransactionSnapshot {
-                                    xmin: 0,
-                                    xmax: 1, // See only TXN 0
-                                    active_txns: vec![],
-                                };
-                                if let Ok(Some(old)) = storage.get(&key, &snapshot) {
-                                    // Soft-delete with bootstrap transaction (TXN 0)
-                                    storage.delete(&key, 0).ok();
+                            if let Some(t) = map.get_mut(&tbl) {
+                                if let Some(old) = t.remove(&key) {
                                     Self::index_remove_row(&mut guard, ns, tbl, &key, &old);
                                 }
                             }
@@ -724,8 +638,6 @@ impl PieskieoDb {
             wal: RwLock::new(wal),
             data,
             stats,
-            txn_manager: Arc::new(TransactionManager::new()),
-            session_manager: RwLock::new(None), // Will be set by TCP server
             vectors,
             vector_ns,
             graph,
@@ -742,18 +654,6 @@ impl PieskieoDb {
         collection: Option<&str>,
         id: Uuid,
         json: Value,
-    ) -> Result<()> {
-        self.put_doc_ns_txn(ns, collection, id, json, None)
-    }
-
-    /// Internal version with optional transaction ID for MVCC
-    pub(crate) fn put_doc_ns_txn(
-        &self,
-        ns: Option<&str>,
-        collection: Option<&str>,
-        id: Uuid,
-        json: Value,
-        txn_id: Option<TransactionId>,
     ) -> Result<()> {
         if !self.owns(&id) {
             return Err(PieskieoError::WrongShard);
@@ -772,19 +672,13 @@ impl PieskieoDb {
             let mut guard = self.data.write();
             let ns_key = Self::ns(ns);
             let col_key = Self::col(collection);
-
-            // Get or create VersionedStorage for this collection
-            let storage = guard
+            guard
                 .docs
                 .entry(ns_key.clone())
                 .or_default()
                 .entry(col_key.clone())
-                .or_insert_with(|| Arc::new(VersionedStorage::new()));
-
-            // Insert with transaction ID (use 0 if no transaction active)
-            let tid = txn_id.unwrap_or(0);
-            storage.insert(id, json.clone(), tid)?;
-
+                .or_default()
+                .insert(id, json.clone());
             Self::index_upsert_doc(&mut guard, ns_key.clone(), col_key.clone(), id, &json);
             self.bump_doc_stats(&ns_key, &col_key, 1);
         }
@@ -801,17 +695,6 @@ impl PieskieoDb {
         collection: Option<&str>,
         id: &Uuid,
     ) -> Result<()> {
-        self.delete_doc_ns_txn(ns, collection, id, None)
-    }
-
-    /// Internal version with optional transaction ID for MVCC soft delete
-    pub(crate) fn delete_doc_ns_txn(
-        &self,
-        ns: Option<&str>,
-        collection: Option<&str>,
-        id: &Uuid,
-        txn_id: Option<TransactionId>,
-    ) -> Result<()> {
         if !self.owns(id) {
             return Err(PieskieoError::WrongShard);
         }
@@ -827,18 +710,8 @@ impl PieskieoDb {
             let ns_key = Self::ns(ns);
             let col_key = Self::col(collection);
             if let Some(ns_map) = guard.docs.get_mut(&ns_key) {
-                if let Some(storage) = ns_map.get_mut(&col_key) {
-                    // Get current value for index removal (use snapshot that sees all)
-                    let snapshot = TransactionSnapshot {
-                        xmin: 0,
-                        xmax: u64::MAX,
-                        active_txns: vec![],
-                    };
-                    if let Ok(Some(old)) = storage.get(id, &snapshot) {
-                        // Soft delete with transaction ID
-                        let tid = txn_id.unwrap_or(0);
-                        storage.delete(id, tid)?;
-
+                if let Some(col_map) = ns_map.get_mut(&col_key) {
+                    if let Some(old) = col_map.remove(id) {
                         Self::index_remove_doc(
                             &mut guard,
                             ns_key.clone(),
@@ -869,18 +742,6 @@ impl PieskieoDb {
         id: Uuid,
         row: &T,
     ) -> Result<()> {
-        self.put_row_ns_txn(ns, table, id, row, None)
-    }
-
-    /// Internal version with optional transaction ID for MVCC
-    pub(crate) fn put_row_ns_txn<T: Serialize>(
-        &self,
-        ns: Option<&str>,
-        table: Option<&str>,
-        id: Uuid,
-        row: &T,
-        txn_id: Option<TransactionId>,
-    ) -> Result<()> {
         if !self.owns(&id) {
             return Err(PieskieoError::WrongShard);
         }
@@ -899,19 +760,13 @@ impl PieskieoDb {
             let mut guard = self.data.write();
             let ns_key = Self::ns(ns);
             let tbl_key = Self::col(table);
-
-            // Get or create VersionedStorage for this table
-            let storage = guard
+            guard
                 .rows
                 .entry(ns_key.clone())
                 .or_default()
                 .entry(tbl_key.clone())
-                .or_insert_with(|| Arc::new(VersionedStorage::new()));
-
-            // Insert with transaction ID (use 0 if no transaction active)
-            let tid = txn_id.unwrap_or(0);
-            storage.insert(id, json.clone(), tid)?;
-
+                .or_default()
+                .insert(id, json.clone());
             Self::index_upsert_row(&mut guard, ns_key.clone(), tbl_key.clone(), id, &json);
             self.bump_row_stats(&ns_key, &tbl_key, 1);
         }
@@ -973,17 +828,6 @@ impl PieskieoDb {
     }
 
     pub fn delete_row_ns(&self, ns: Option<&str>, table: Option<&str>, id: &Uuid) -> Result<()> {
-        self.delete_row_ns_txn(ns, table, id, None)
-    }
-
-    /// Internal version with optional transaction ID for MVCC soft delete
-    pub(crate) fn delete_row_ns_txn(
-        &self,
-        ns: Option<&str>,
-        table: Option<&str>,
-        id: &Uuid,
-        txn_id: Option<TransactionId>,
-    ) -> Result<()> {
         if !self.owns(id) {
             return Err(PieskieoError::WrongShard);
         }
@@ -999,18 +843,8 @@ impl PieskieoDb {
             let ns_key = Self::ns(ns);
             let tbl_key = Self::col(table);
             if let Some(ns_map) = guard.rows.get_mut(&ns_key) {
-                if let Some(storage) = ns_map.get_mut(&tbl_key) {
-                    // Get current value for index removal (use snapshot that sees all)
-                    let snapshot = TransactionSnapshot {
-                        xmin: 0,
-                        xmax: u64::MAX,
-                        active_txns: vec![],
-                    };
-                    if let Ok(Some(old)) = storage.get(id, &snapshot) {
-                        // Soft delete with transaction ID
-                        let tid = txn_id.unwrap_or(0);
-                        storage.delete(id, tid)?;
-
+                if let Some(tbl_map) = ns_map.get_mut(&tbl_key) {
+                    if let Some(old) = tbl_map.remove(id) {
                         Self::index_remove_row(
                             &mut guard,
                             ns_key.clone(),
@@ -1132,9 +966,6 @@ impl PieskieoDb {
     }
 
     /// SQL-ish over docs/rows. Supports SELECT/INSERT/UPDATE/DELETE (single statement).
-    ///
-    /// NOTE: This is for backward compatibility. New code should use query_sql_with_session.
-    /// Transaction control commands (BEGIN/COMMIT/ROLLBACK) are not supported here.
     pub fn query_sql(&self, sql: &str) -> Result<SqlResult> {
         let dialect = GenericDialect {};
         let ast = Parser::parse_sql(&dialect, sql)
@@ -1143,178 +974,12 @@ impl PieskieoDb {
             return Err(PieskieoError::Internal("one statement expected".into()));
         }
         let stmt = &ast[0];
-
-        // Transaction control not supported in non-session mode
         match stmt {
-            Statement::StartTransaction { .. }
-            | Statement::Commit { .. }
-            | Statement::Rollback { .. } => {
-                return Err(PieskieoError::Internal(
-                    "Transaction control requires session context. Use query_sql_with_session."
-                        .into(),
-                ));
-            }
-            _ => {}
-        }
-
-        // Execute without transaction context (backward compatibility mode)
-        match stmt {
-            Statement::Query(_) => self.exec_select(stmt, None),
-            Statement::Insert { .. } => self.exec_insert(stmt, None),
-            Statement::Update { .. } => self.exec_update(stmt, None),
-            Statement::Delete { .. } => self.exec_delete(stmt, None),
+            Statement::Query(_) => self.exec_select(stmt),
+            Statement::Insert { .. } => self.exec_insert(stmt),
+            Statement::Update { .. } => self.exec_update(stmt),
+            Statement::Delete { .. } => self.exec_delete(stmt),
             _ => Err(PieskieoError::Internal("statement not supported".into())),
-        }
-    }
-
-    /// Set the session manager (called by TCP server)
-    pub fn set_session_manager(&self, session_manager: Arc<SessionManager>) {
-        *self.session_manager.write() = Some(session_manager);
-    }
-
-    /// SQL query with session context (for MVCC transaction support)
-    ///
-    /// This is the PRIMARY entry point for queries from the TCP server.
-    ///
-    /// PRODUCTION BEHAVIOR:
-    /// - If session has active transaction: use it
-    /// - If no active transaction: create IMPLICIT transaction, execute, then AUTO-COMMIT
-    /// - On error: AUTO-ROLLBACK the implicit transaction
-    ///
-    /// This ensures ACID properties for ALL statements, even in auto-commit mode.
-    pub fn query_sql_with_session(&self, session_id: &SessionId, sql: &str) -> Result<SqlResult> {
-        let dialect = GenericDialect {};
-        let ast = Parser::parse_sql(&dialect, sql)
-            .map_err(|e| PieskieoError::Internal(format!("sql parse error: {e}").into()))?;
-        if ast.len() != 1 {
-            return Err(PieskieoError::Internal("one statement expected".into()));
-        }
-
-        let stmt = &ast[0];
-
-        // Transaction control commands are session-aware
-        match stmt {
-            Statement::StartTransaction { .. } => return self.exec_begin(session_id),
-            Statement::Commit { .. } => return self.exec_commit(session_id),
-            Statement::Rollback { .. } => return self.exec_rollback(session_id),
-            _ => {}
-        }
-
-        // Check if session has active transaction
-        let session_mgr_guard = self.session_manager.read();
-        let session_mgr = session_mgr_guard
-            .as_ref()
-            .ok_or_else(|| PieskieoError::Internal("Session manager not initialized".into()))?;
-
-        let has_explicit_txn = session_mgr.get_active_txn(session_id).is_some();
-        drop(session_mgr_guard); // Release lock before executing
-
-        if has_explicit_txn {
-            // Explicit transaction: use existing transaction context
-            let txn_context = self.get_transaction_context(session_id)?;
-            match stmt {
-                Statement::Query(_) => self.exec_select(stmt, txn_context),
-                Statement::Insert { .. } => self.exec_insert(stmt, txn_context),
-                Statement::Update { .. } => self.exec_update(stmt, txn_context),
-                Statement::Delete { .. } => self.exec_delete(stmt, txn_context),
-                _ => Err(PieskieoError::Internal("statement not supported".into())),
-            }
-        } else {
-            // AUTO-COMMIT MODE: Start implicit transaction
-            let session_mgr_guard = self.session_manager.read();
-            let session_mgr = session_mgr_guard
-                .as_ref()
-                .ok_or_else(|| PieskieoError::Internal("Session manager not initialized".into()))?;
-
-            // Start implicit transaction with RepeatableRead (PostgreSQL default)
-            let implicit_txn_id = session_mgr
-                .begin_transaction(session_id, IsolationLevel::RepeatableRead)
-                .map_err(|e| PieskieoError::Internal(e.into()))?;
-
-            drop(session_mgr_guard);
-
-            tracing::debug!(
-                session_id = %session_id,
-                txn_id = implicit_txn_id,
-                "Started implicit transaction for auto-commit"
-            );
-
-            // Get transaction context for the implicit transaction
-            let txn_context = self.get_transaction_context(session_id)?;
-
-            // Execute the statement
-            let result = match stmt {
-                Statement::Query(_) => self.exec_select(stmt, txn_context),
-                Statement::Insert { .. } => self.exec_insert(stmt, txn_context),
-                Statement::Update { .. } => self.exec_update(stmt, txn_context),
-                Statement::Delete { .. } => self.exec_delete(stmt, txn_context),
-                _ => Err(PieskieoError::Internal("statement not supported".into())),
-            };
-
-            // AUTO-COMMIT or AUTO-ROLLBACK the implicit transaction
-            let session_mgr_guard = self.session_manager.read();
-            let session_mgr = session_mgr_guard
-                .as_ref()
-                .ok_or_else(|| PieskieoError::Internal("Session manager not initialized".into()))?;
-
-            match result {
-                Ok(ref _success) => {
-                    // Statement succeeded: AUTO-COMMIT
-                    session_mgr
-                        .commit_transaction(session_id)
-                        .map_err(|e| PieskieoError::Internal(e.into()))?;
-
-                    tracing::debug!(
-                        session_id = %session_id,
-                        txn_id = implicit_txn_id,
-                        "Auto-committed implicit transaction"
-                    );
-                }
-                Err(ref _error) => {
-                    // Statement failed: AUTO-ROLLBACK
-                    if let Err(rollback_err) = session_mgr.rollback_transaction(session_id) {
-                        tracing::error!(
-                            session_id = %session_id,
-                            txn_id = implicit_txn_id,
-                            error = %rollback_err,
-                            "Failed to auto-rollback implicit transaction"
-                        );
-                    } else {
-                        tracing::debug!(
-                            session_id = %session_id,
-                            txn_id = implicit_txn_id,
-                            "Auto-rolled back implicit transaction after error"
-                        );
-                    }
-                }
-            }
-
-            result
-        }
-    }
-
-    /// Get transaction context from session
-    ///
-    /// Returns Some((txn_id, snapshot)) if there's an active transaction
-    /// Returns None if no active transaction
-    fn get_transaction_context(
-        &self,
-        session_id: &SessionId,
-    ) -> Result<Option<(TransactionId, TransactionSnapshot)>> {
-        let session_mgr_guard = self.session_manager.read();
-        let session_mgr = session_mgr_guard
-            .as_ref()
-            .ok_or_else(|| PieskieoError::Internal("Session manager not initialized".into()))?;
-
-        // Check if there's an active transaction in this session
-        if let Some(txn_id) = session_mgr.get_active_txn(session_id) {
-            // Get snapshot for this transaction
-            let snapshot = self.txn_manager.get_snapshot(txn_id).ok_or_else(|| {
-                PieskieoError::Internal(format!("Transaction {} not found", txn_id).into())
-            })?;
-            Ok(Some((txn_id, snapshot)))
-        } else {
-            Ok(None)
         }
     }
 
@@ -1973,7 +1638,6 @@ fn cmp_values(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
 struct Projection {
     source: String,
     alias: String,
-    literal_value: Option<Value>, // For literal projections (SELECT 1, SELECT version())
 }
 
 #[derive(Clone)]
@@ -2021,32 +1685,19 @@ enum Op {
 }
 
 impl PieskieoDb {
-    /// Filter conditions with MVCC snapshot-based visibility
-    ///
-    /// This method scans VersionedStorage and returns only tuples visible to the snapshot
     fn filter_conditions(
         &self,
-        storage: &VersionedStorage,
+        inner: &BTreeMap<Uuid, Value>,
         conds: &[Condition],
         limit: usize,
         offset: usize,
-        snapshot: &TransactionSnapshot,
     ) -> Vec<(Uuid, Value)> {
-        // Scan all visible tuples using VersionedStorage
-        let all_tuples = match storage.scan(snapshot) {
-            Ok(tuples) => tuples,
-            Err(_) => return vec![],
-        };
-
         let mut out = Vec::new();
         let mut skipped = 0usize;
-
-        'outer: for (id, v) in all_tuples {
-            if !self.owns(&id) {
+        'outer: for (id, v) in inner.iter() {
+            if !self.owns(id) {
                 continue;
             }
-
-            // Apply WHERE conditions
             for c in conds {
                 let Some(field_val) = v.get(&c.field) else {
                     continue 'outer;
@@ -2081,13 +1732,11 @@ impl PieskieoDb {
                     continue 'outer;
                 }
             }
-
-            // LIMIT / OFFSET
             if skipped < offset {
                 skipped += 1;
                 continue;
             }
-            out.push((id, v));
+            out.push((*id, v.clone()));
             if out.len() >= limit {
                 break;
             }
@@ -2095,42 +1744,13 @@ impl PieskieoDb {
         out
     }
 
-    fn exec_select(
-        &self,
-        stmt: &Statement,
-        txn_context: Option<(TransactionId, TransactionSnapshot)>,
-    ) -> Result<SqlResult> {
+    fn exec_select(&self, stmt: &Statement) -> Result<SqlResult> {
         let (ns, coll, conds, projections, limit, offset, order_by, join_spec, aggs, target_rows) =
             self.parse_select(stmt)?;
-
-        // Create snapshot for MVCC visibility
-        // If we have explicit transaction context, use it; otherwise create a snapshot that sees all committed data
-        let snapshot = if let Some((_, snap)) = txn_context {
-            snap
-        } else {
-            // No transaction: create snapshot that sees all committed data (xmax = infinity)
-            TransactionSnapshot {
-                xmin: 0,
-                xmax: u64::MAX,
-                active_txns: vec![],
-            }
-        };
-
-        // Handle literal queries (SELECT 1, SELECT version(), etc.) without FROM clause
-        let mut rows = if coll == "__literals__" {
-            // Return a single synthetic row for evaluating literals
-            vec![(Uuid::nil(), serde_json::json!({}))]
-        } else {
-            self.collect_filtered_ns(&ns, &coll, target_rows, &conds, &snapshot)
-        };
+        let mut rows = self.collect_filtered_ns(&ns, &coll, target_rows, &conds);
         if let Some(join) = join_spec {
-            let right = self.collect_filtered_ns(
-                &join.right_ns,
-                &join.right_coll,
-                join.right_is_rows,
-                &[],
-                &snapshot,
-            );
+            let right =
+                self.collect_filtered_ns(&join.right_ns, &join.right_coll, join.right_is_rows, &[]);
             let mut joined = Vec::new();
             for (lid, lv) in &rows {
                 if let Some(lobj) = lv.as_object() {
@@ -2230,10 +1850,7 @@ impl PieskieoDb {
             for (id, v) in slice {
                 let mut obj = serde_json::Map::new();
                 for p in projs.iter() {
-                    if let Some(ref literal) = p.literal_value {
-                        // Use literal value directly
-                        obj.insert(p.alias.clone(), literal.clone());
-                    } else if p.source == "_id" {
+                    if p.source == "_id" {
                         obj.insert(p.alias.clone(), Value::String(id.to_string()));
                     } else if let Some(val) = v.get(&p.source) {
                         obj.insert(p.alias.clone(), val.clone());
@@ -2254,7 +1871,6 @@ impl PieskieoDb {
         coll: &str,
         target_rows: bool,
         conds: &[Condition],
-        snapshot: &TransactionSnapshot,
     ) -> Vec<(Uuid, Value)> {
         let guard = self.data.read();
         if target_rows {
@@ -2262,14 +1878,14 @@ impl PieskieoDb {
                 .rows
                 .get(ns)
                 .and_then(|m| m.get(coll))
-                .map(|storage| self.filter_conditions(storage, conds, usize::MAX, 0, snapshot))
+                .map(|map| self.filter_conditions(map, conds, usize::MAX, 0))
                 .unwrap_or_default()
         } else {
             guard
                 .docs
                 .get(ns)
                 .and_then(|m| m.get(coll))
-                .map(|storage| self.filter_conditions(storage, conds, usize::MAX, 0, snapshot))
+                .map(|map| self.filter_conditions(map, conds, usize::MAX, 0))
                 .unwrap_or_default()
         }
     }
@@ -2309,7 +1925,6 @@ impl PieskieoDb {
                     projections.get_or_insert_with(Vec::new).push(Projection {
                         source: id.value.clone(),
                         alias: id.value.clone(),
-                        literal_value: None,
                     });
                 }
                 SelectItem::ExprWithAlias {
@@ -2319,68 +1934,21 @@ impl PieskieoDb {
                     projections.get_or_insert_with(Vec::new).push(Projection {
                         source: id.value.clone(),
                         alias: alias.value.clone(),
-                        literal_value: None,
                     });
                 }
                 SelectItem::UnnamedExpr(Expr::Function(f)) => {
-                    // Check if it's a literal function (version, current_timestamp, etc.)
-                    let fname = f.name.to_string().to_lowercase();
-                    if matches!(
-                        fname.as_str(),
-                        "version" | "current_timestamp" | "now" | "current_date" | "pg_backend_pid"
-                    ) {
-                        // Handle as literal function
-                        let (value, alias) =
-                            Self::evaluate_simple_expr(&Expr::Function(f.clone()))?;
-                        projections.get_or_insert_with(Vec::new).push(Projection {
-                            source: "__literal__".to_string(),
-                            alias,
-                            literal_value: Some(value),
-                        });
-                    } else {
-                        // Handle as aggregate function
-                        aggs.push(Self::parse_agg(f, None)?);
-                    }
+                    aggs.push(Self::parse_agg(f, None)?);
                 }
                 SelectItem::ExprWithAlias {
                     expr: Expr::Function(f),
                     alias,
                 } => {
-                    // Check if it's a literal function
-                    let fname = f.name.to_string().to_lowercase();
-                    if matches!(
-                        fname.as_str(),
-                        "version" | "current_timestamp" | "now" | "current_date" | "pg_backend_pid"
-                    ) {
-                        // Handle as literal function with custom alias
-                        let (value, _) = Self::evaluate_simple_expr(&Expr::Function(f.clone()))?;
-                        projections.get_or_insert_with(Vec::new).push(Projection {
-                            source: "__literal__".to_string(),
-                            alias: alias.value.clone(),
-                            literal_value: Some(value),
-                        });
-                    } else {
-                        // Handle as aggregate function
-                        aggs.push(Self::parse_agg(f, Some(&alias.value))?);
-                    }
+                    aggs.push(Self::parse_agg(f, Some(&alias.value))?);
                 }
-                SelectItem::UnnamedExpr(expr) => {
-                    // Handle literals and expressions for auth probes (SELECT 1, SELECT version(), etc.)
-                    let (value, alias) = Self::evaluate_simple_expr(expr)?;
-                    projections.get_or_insert_with(Vec::new).push(Projection {
-                        source: "__literal__".to_string(),
-                        alias,
-                        literal_value: Some(value),
-                    });
-                }
-                SelectItem::ExprWithAlias { expr, alias } => {
-                    // Handle aliased literals/expressions
-                    let (value, _) = Self::evaluate_simple_expr(expr)?;
-                    projections.get_or_insert_with(Vec::new).push(Projection {
-                        source: "__literal__".to_string(),
-                        alias: alias.value.clone(),
-                        literal_value: Some(value),
-                    });
+                SelectItem::QualifiedWildcard(name, _) => {
+                    // Handle table.* projections - treat as wildcard for now
+                    tracing::debug!("treating qualified wildcard {:?}.* as wildcard", name);
+                    saw_wildcard = true;
                 }
                 _ => {
                     return Err(PieskieoError::Internal(
@@ -2397,18 +1965,15 @@ impl PieskieoDb {
         if saw_wildcard {
             projections = None;
         }
-
-        // FROM clause is optional for literal queries (SELECT 1, SELECT version(), etc.)
-        let (family, ns, coll) = if let Some(tbl) =
-            select.from.get(0).and_then(|t| match &t.relation {
+        let tbl = select
+            .from
+            .get(0)
+            .and_then(|t| match &t.relation {
                 TableFactor::Table { name, .. } => Some(name.clone()),
                 _ => None,
-            }) {
-            self.split_name(&tbl)?
-        } else {
-            // No FROM clause - use defaults for literal queries
-            (None, "default".to_string(), "__literals__".to_string())
-        };
+            })
+            .ok_or_else(|| PieskieoError::Internal("FROM required".into()))?;
+        let (family, ns, coll) = self.split_name(&tbl)?;
         let mut conds = Vec::new();
         if let Some(selection) = &select.selection {
             self.walk_expr(selection, &mut conds)?;
@@ -2470,11 +2035,6 @@ impl PieskieoDb {
     }
 
     fn parse_join(&self, select: &Select) -> Result<Option<JoinSpec>> {
-        // No FROM clause (literal queries like SELECT 1)
-        if select.from.is_empty() {
-            return Ok(None);
-        }
-
         if select.from.len() != 1 {
             return Err(PieskieoError::Internal(
                 "only single FROM item supported".into(),
@@ -2576,215 +2136,6 @@ impl PieskieoDb {
         serde_json::Number::from_f64(x)
             .map(Value::Number)
             .unwrap_or(Value::Null)
-    }
-
-    /// Format Unix timestamp as ISO8601 string (YYYY-MM-DDTHH:MM:SS.sssZ)
-    fn format_timestamp(secs: u64, nanos: u32) -> String {
-        // Days since Unix epoch (1970-01-01)
-        let days = secs / 86400;
-
-        // Calculate year, month, day from days since epoch
-        let (year, month, day) = Self::days_to_ymd(days as i64);
-
-        // Time of day
-        let day_secs = secs % 86400;
-        let hour = day_secs / 3600;
-        let minute = (day_secs % 3600) / 60;
-        let second = day_secs % 60;
-        let millis = nanos / 1_000_000;
-
-        format!(
-            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
-            year, month, day, hour, minute, second, millis
-        )
-    }
-
-    /// Format Unix timestamp as date string (YYYY-MM-DD)
-    fn format_date(secs: u64) -> String {
-        let days = secs / 86400;
-        let (year, month, day) = Self::days_to_ymd(days as i64);
-        format!("{:04}-{:02}-{:02}", year, month, day)
-    }
-
-    /// Convert days since Unix epoch to (year, month, day)
-    fn days_to_ymd(days: i64) -> (i32, u32, u32) {
-        // Algorithm adapted from Neri/Schneider
-        let z = days + 719468;
-        let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
-        let doe = z - era * 146097;
-        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-        let y = yoe + era * 400;
-        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-        let mp = (5 * doy + 2) / 153;
-        let d = doy - (153 * mp + 2) / 5 + 1;
-        let m = if mp < 10 { mp + 3 } else { mp - 9 };
-        let y = if m <= 2 { y + 1 } else { y };
-
-        (y as i32, m as u32, d as u32)
-    }
-
-    /// Evaluate simple expressions for literal projections (SELECT 1, SELECT version(), etc.)
-    fn evaluate_simple_expr(expr: &Expr) -> Result<(Value, String)> {
-        match expr {
-            // Numeric literals
-            Expr::Value(sqlparser::ast::Value::Number(n, _)) => {
-                let num: f64 = n
-                    .parse()
-                    .map_err(|_| PieskieoError::Internal("invalid number".into()))?;
-                let value = serde_json::Number::from_f64(num)
-                    .map(Value::Number)
-                    .unwrap_or(Value::Null);
-                // Use the literal string as the alias
-                Ok((value, n.to_string()))
-            }
-            // String literals
-            Expr::Value(sqlparser::ast::Value::SingleQuotedString(s))
-            | Expr::Value(sqlparser::ast::Value::DoubleQuotedString(s)) => {
-                // Use the string value itself as the alias
-                Ok((Value::String(s.clone()), s.clone()))
-            }
-            // Boolean literals
-            Expr::Value(sqlparser::ast::Value::Boolean(b)) => {
-                // Use TRUE/FALSE as the alias
-                let alias = if *b { "TRUE" } else { "FALSE" };
-                Ok((Value::Bool(*b), alias.to_string()))
-            }
-            // NULL
-            Expr::Value(sqlparser::ast::Value::Null) => Ok((Value::Null, "NULL".to_string())),
-            // Simple functions for auth probes
-            Expr::Function(f) => {
-                let name = f.name.to_string().to_lowercase();
-                let value = match name.as_str() {
-                    "version" => Value::String(format!("Pieskieo/{}", env!("CARGO_PKG_VERSION"))),
-                    "current_timestamp" | "now" => {
-                        // Use SystemTime to create ISO8601 timestamp
-                        let now = std::time::SystemTime::now();
-                        let duration = now.duration_since(std::time::UNIX_EPOCH).unwrap();
-                        let secs = duration.as_secs();
-                        let nanos = duration.subsec_nanos();
-                        // Format as ISO8601: YYYY-MM-DDTHH:MM:SS.sssZ
-                        // Simple implementation using epoch seconds
-                        let dt = Self::format_timestamp(secs, nanos);
-                        Value::String(dt)
-                    }
-                    "current_date" => {
-                        // Use SystemTime to create date string
-                        let now = std::time::SystemTime::now();
-                        let duration = now.duration_since(std::time::UNIX_EPOCH).unwrap();
-                        let secs = duration.as_secs();
-                        let date = Self::format_date(secs);
-                        Value::String(date)
-                    }
-                    "pg_backend_pid" => Value::Number(std::process::id().into()),
-                    _ => {
-                        return Err(PieskieoError::Internal(
-                            format!("function {} not supported in literal context", name).into(),
-                        ))
-                    }
-                };
-                Ok((value, name))
-            }
-            // Simple arithmetic
-            Expr::BinaryOp { left, op, right } => {
-                let (left_val, left_alias) = Self::evaluate_simple_expr(left)?;
-                let (right_val, right_alias) = Self::evaluate_simple_expr(right)?;
-
-                let left_num = left_val
-                    .as_f64()
-                    .ok_or_else(|| PieskieoError::Internal("left operand not a number".into()))?;
-                let right_num = right_val
-                    .as_f64()
-                    .ok_or_else(|| PieskieoError::Internal("right operand not a number".into()))?;
-
-                let (result, op_symbol) = match op {
-                    BinaryOperator::Plus => (left_num + right_num, "+"),
-                    BinaryOperator::Minus => (left_num - right_num, "-"),
-                    BinaryOperator::Multiply => (left_num * right_num, "*"),
-                    BinaryOperator::Divide => {
-                        if right_num == 0.0 {
-                            return Err(PieskieoError::Internal("division by zero".into()));
-                        }
-                        (left_num / right_num, "/")
-                    }
-                    _ => {
-                        return Err(PieskieoError::Internal(
-                            format!("operator {:?} not supported in literal context", op).into(),
-                        ))
-                    }
-                };
-
-                let value = serde_json::Number::from_f64(result)
-                    .map(Value::Number)
-                    .unwrap_or(Value::Null);
-                // Create alias from the expression: "1 + 1", "10 * 5 - 3", etc.
-                let alias = format!("{} {} {}", left_alias, op_symbol, right_alias);
-                Ok((value, alias))
-            }
-            _ => Err(PieskieoError::Internal(
-                format!("expression {:?} not supported in literal context", expr).into(),
-            )),
-        }
-    }
-
-    /// Execute BEGIN (start transaction)
-    fn exec_begin(&self, session_id: &SessionId) -> Result<SqlResult> {
-        let session_mgr_guard = self.session_manager.read();
-        let session_mgr = session_mgr_guard
-            .as_ref()
-            .ok_or_else(|| PieskieoError::Internal("Session manager not initialized".into()))?;
-
-        // Start transaction in session with RepeatableRead isolation (PostgreSQL default)
-        let txn_id = session_mgr
-            .begin_transaction(session_id, IsolationLevel::RepeatableRead)
-            .map_err(|e| PieskieoError::Internal(e.into()))?;
-
-        tracing::info!(
-            session_id = %session_id,
-            txn_id = txn_id,
-            "Transaction started"
-        );
-
-        Ok(SqlResult::Begin { txn_id })
-    }
-
-    /// Execute COMMIT (commit current transaction)
-    fn exec_commit(&self, session_id: &SessionId) -> Result<SqlResult> {
-        let session_mgr_guard = self.session_manager.read();
-        let session_mgr = session_mgr_guard
-            .as_ref()
-            .ok_or_else(|| PieskieoError::Internal("Session manager not initialized".into()))?;
-
-        // Commit the active transaction in this session
-        session_mgr
-            .commit_transaction(session_id)
-            .map_err(|e| PieskieoError::Internal(e.into()))?;
-
-        tracing::info!(
-            session_id = %session_id,
-            "Transaction committed"
-        );
-
-        Ok(SqlResult::Commit)
-    }
-
-    /// Execute ROLLBACK (abort current transaction)
-    fn exec_rollback(&self, session_id: &SessionId) -> Result<SqlResult> {
-        let session_mgr_guard = self.session_manager.read();
-        let session_mgr = session_mgr_guard
-            .as_ref()
-            .ok_or_else(|| PieskieoError::Internal("Session manager not initialized".into()))?;
-
-        // Rollback the active transaction in this session
-        session_mgr
-            .rollback_transaction(session_id)
-            .map_err(|e| PieskieoError::Internal(e.into()))?;
-
-        tracing::info!(
-            session_id = %session_id,
-            "Transaction rolled back"
-        );
-
-        Ok(SqlResult::Rollback)
     }
 
     fn split_name(
@@ -3489,284 +2840,6 @@ mod tests {
         let (records, end) = db.wal_replay_since(0)?;
         assert!(end > 0);
         assert!(records.len() >= 4);
-        Ok(())
-    }
-
-    /// Tests for literal SELECT queries (no FROM clause)
-
-    #[tokio::test]
-    async fn test_select_literal_number() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT 1")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        // DEBUG: Print all keys
-        eprintln!(
-            "DEBUG: Keys in result: {:?}",
-            obj.keys().collect::<Vec<_>>()
-        );
-        eprintln!(
-            "DEBUG: Full object: {}",
-            serde_json::to_string_pretty(obj).unwrap()
-        );
-        assert_eq!(obj.get("1").unwrap().as_f64().unwrap(), 1.0);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_literal_with_alias() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT 42 AS answer")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        assert_eq!(obj.get("answer").unwrap().as_f64().unwrap(), 42.0);
-        // Should NOT have the literal value as a key
-        assert!(!obj.contains_key("42"));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_arithmetic() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT 1 + 1")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        // The alias for "1 + 1" expression
-        assert_eq!(obj.get("1 + 1").unwrap().as_f64().unwrap(), 2.0);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_arithmetic_complex() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT 10 * 5 - 3")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        // Should be 50 - 3 = 47
-        assert_eq!(obj.get("10 * 5 - 3").unwrap().as_f64().unwrap(), 47.0);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_division() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT 10 / 2")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        assert_eq!(obj.get("10 / 2").unwrap().as_f64().unwrap(), 5.0);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_current_timestamp() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT current_timestamp()")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        // Should return an ISO8601 timestamp string
-        let ts = obj.get("current_timestamp").unwrap().as_str().unwrap();
-        assert!(ts.contains("T"), "timestamp should contain T separator");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_now() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT now()")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        let ts = obj.get("now").unwrap().as_str().unwrap();
-        assert!(ts.contains("T"));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_current_date() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT current_date()")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        let date = obj.get("current_date").unwrap().as_str().unwrap();
-        // Should be YYYY-MM-DD format
-        assert_eq!(date.len(), 10, "date should be in YYYY-MM-DD format");
-        assert_eq!(&date[4..5], "-");
-        assert_eq!(&date[7..8], "-");
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_pg_backend_pid() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT pg_backend_pid()")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        let pid = obj.get("pg_backend_pid").unwrap().as_f64().unwrap() as u32;
-        // Should be current process ID
-        assert!(pid > 0);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_boolean_true() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT TRUE")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        assert_eq!(obj.get("TRUE").unwrap().as_bool().unwrap(), true);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_boolean_false() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT FALSE")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        assert_eq!(obj.get("FALSE").unwrap().as_bool().unwrap(), false);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_null() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT NULL")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        assert!(obj.get("NULL").unwrap().is_null());
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_select_multiple_literals() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        let res = db.query_sql("SELECT 1 AS num, 'test' AS str, TRUE AS flag")?;
-        let rows = match res {
-            SqlResult::Select(r) => r,
-            _ => panic!("expected select"),
-        };
-        assert_eq!(rows.len(), 1);
-        let (_, val) = &rows[0];
-        let obj = val.as_object().unwrap();
-        assert_eq!(obj.get("num").unwrap().as_f64().unwrap(), 1.0);
-        assert_eq!(obj.get("str").unwrap().as_str().unwrap(), "test");
-        assert_eq!(obj.get("flag").unwrap().as_bool().unwrap(), true);
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_transaction_commands() -> Result<()> {
-        let dir = tempdir().unwrap();
-        let db = PieskieoDb::open(dir.path())?;
-
-        // Test BEGIN
-        let res = db.query_sql("BEGIN")?;
-        match res {
-            SqlResult::Begin { txn_id } => {
-                assert!(txn_id > 0, "Transaction ID should be positive");
-                assert_eq!(
-                    db.txn_manager.active_count(),
-                    1,
-                    "Should have 1 active transaction"
-                );
-            }
-            _ => panic!("Expected Begin result"),
-        }
-
-        // Test COMMIT
-        let res = db.query_sql("COMMIT")?;
-        assert!(matches!(res, SqlResult::Commit));
-
-        // Test ROLLBACK
-        let _res2 = db.query_sql("BEGIN")?;
-        let res3 = db.query_sql("ROLLBACK")?;
-        assert!(matches!(res3, SqlResult::Rollback));
-
         Ok(())
     }
 }

@@ -18,12 +18,10 @@ rustyline = "13"
 serde.workspace = true
 ctrlc = "3"
 dirs.workspace = true
-
-[[bin]]
-name = "pieskieod"
-path = "src/daemon.rs"
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+rpassword = "7"
 
 [[bin]]
 name = "pieskieo"
-path = "src/client.rs"
+path = "src/main.rs"
 
