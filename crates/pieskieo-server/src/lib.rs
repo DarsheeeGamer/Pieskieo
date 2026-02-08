@@ -957,7 +957,16 @@ fn init_logging(data_dir: &str) {
 
     let log_dir = std::env::var("PIESKIEO_LOG_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from(data_dir).join("logs"));
+        .unwrap_or_else(|_| {
+            #[cfg(target_os = "windows")]
+            {
+                PathBuf::from(r"C:\PieskieoLogs")
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                PathBuf::from("/PieskieoLogs")
+            }
+        });
     let file_appender = rolling::daily(log_dir, "pieskieo.log");
     let (file_writer, guard) = tracing_appender::non_blocking(file_appender);
     Box::leak(Box::new(guard));
