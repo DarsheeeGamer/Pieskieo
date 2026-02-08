@@ -42,7 +42,19 @@ cargo run -p pieskieo-cli -- --connect pieskieo@localhost --port 8000 -W
 `-W` prompts for password; use bearer with `-t <token>`. The REPL accepts raw PQL.
 
 ## Install
-Installers are temporarily removed; build from source:
+- Linux/macOS (service enabled by default on Linux):
+  ```
+  curl -fsSL https://raw.githubusercontent.com/DarsheeeGamer/Pieskieo/main/install/install.sh | sudo bash
+  ```
+  Env overrides: `PIESKIEO_VERSION`, `PIESKIEO_PREFIX`, `PIESKIEO_SERVICE=0` to skip systemd.
+
+- Windows (PowerShell):
+  ```
+  iwr https://raw.githubusercontent.com/DarsheeeGamer/Pieskieo/main/install/install.ps1 -UseBasicParsing | iex
+  ```
+  Env/params: `PIESKIEO_VERSION`, `PIESKIEO_PREFIX`.
+
+Build from source (all platforms):
 ```
 cargo build --release
 ```
