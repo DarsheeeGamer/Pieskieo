@@ -265,8 +265,8 @@ impl AuthConfig {
         // default admin if nothing configured
         if users.is_empty() && bearer.is_none() {
             users.push(UserRec {
-                user: "Pieskieo".into(),
-                password_hash: Self::hash_password("pieskieo"),
+                user: "pkadmin".into(),
+                password_hash: Self::hash_password("admin"),
                 role: Role::Admin,
             });
         }
