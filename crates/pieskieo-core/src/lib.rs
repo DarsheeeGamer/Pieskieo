@@ -1,6 +1,7 @@
 pub mod engine;
 pub mod error;
 pub mod graph;
+pub mod pql;
 pub mod vector;
 pub mod wal;
 

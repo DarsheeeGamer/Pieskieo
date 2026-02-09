@@ -287,19 +287,133 @@ mod tests {
 - Provide sensible defaults with `.unwrap_or()` or `.unwrap_or_else()`
 - Document all env vars in README.md
 
-## Testing Standards
-- Write tests in `#[cfg(test)]` modules in the same file
-- Use `#[tokio::test]` for async tests
-- Use `tempfile::tempdir()` for temporary directories in tests
-- Test file location: Same file as implementation (Rust convention)
-- Ensure all public APIs have test coverage
+## Production-Grade Requirements
 
-## Performance Considerations
-- Use `parking_lot` locks instead of `std::sync`
+Every feature MUST include from day 1:
+
+### Performance Optimizations
+- [ ] SIMD/vectorization where applicable (use `std::arch` for hot paths)
+- [ ] Lock-free data structures where possible (use `crossbeam` or atomic operations)
+- [ ] Memory pooling and zero-copy operations
+- [ ] Compression (adaptive based on data characteristics)
+- [ ] Batch processing for bulk operations
+- [ ] CPU cache optimization (align structs, minimize pointer chasing)
+
+### Distributed Systems Support
+- [ ] Multi-node coordination from day 1 (no "single-node first")
+- [ ] Cross-shard queries optimized
+- [ ] Distributed transactions (2PC or consensus)
+- [ ] Network partition handling
+- [ ] Split-brain prevention
+
+### Reliability
+- [ ] Full ACID guarantees (no eventual consistency shortcuts)
+- [ ] WAL with fsync guarantees
+- [ ] Crash recovery tested and verified
+- [ ] Automatic failover mechanisms
+- [ ] Graceful degradation under load
+
+### Observability
+- [ ] Prometheus metrics for all operations
+- [ ] Structured logging (use `tracing`)
+- [ ] Query explain plans with cost estimates
+- [ ] Slow query logging
+- [ ] Performance schema for live introspection
+
+## Algorithm Selection Standards
+
+Always choose **state-of-the-art** algorithms, not "good enough":
+
+| Component | ❌ Don't Use | ✅ Use Instead |
+|-----------|-------------|----------------|
+| Spatial Index | Basic R-tree | R*-tree with bulk loading |
+| Graph Joins | Hash joins | Worst-Case Optimal Joins (WCOJ) |
+| Vector Search | Flat index | HNSW + IVF-PQ hybrid |
+| Deadlock Detection | Timeout-based | Wait-for graph with cycle detection |
+| Query Optimizer | Rule-based | Cost-based with cardinality estimation |
+| Storage | Row-only | Hybrid (columnar + row + vector + graph) |
+| Compression | Single algorithm | Adaptive (LZ4/Zstd based on data) |
+| Lock Manager | Coarse locks | Fine-grained + lock-free where possible |
+
+## Testing Standards
+
+### Test Coverage Requirements
+- **Unit tests**: 90%+ coverage minimum
+- **Integration tests**: Cross-component interactions
+- **Stress tests**: High concurrency (10k+ concurrent operations)
+- **Chaos tests**: Network failures, crashes, disk failures
+- **Benchmarks**: Must meet or beat competitor databases
+- **Fuzz testing**: Property-based testing for edge cases
+
+### Test Organization
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+    
+    #[tokio::test]
+    async fn test_feature_basic() -> Result<()> {
+        // Basic functionality test
+    }
+    
+    #[tokio::test]
+    async fn test_feature_edge_cases() -> Result<()> {
+        // Edge cases: empty input, max values, nulls, etc.
+    }
+    
+    #[tokio::test]
+    async fn test_feature_concurrent() -> Result<()> {
+        // Concurrent access test (multiple threads/tasks)
+    }
+    
+    #[tokio::test]
+    async fn test_feature_distributed() -> Result<()> {
+        // Multi-node/multi-shard test
+    }
+}
+```
+
+### Running Tests
+```bash
+# Single test by name
+cargo test -p pieskieo-core test_feature_basic
+
+# Tests with pattern matching
+cargo test -p pieskieo-core graph
+
+# Tests with output
+cargo test -- --nocapture
+
+# Release mode tests (faster)
+cargo test --release
+```
+
+## Performance Targets
+
+All features must meet these targets (p99 latency):
+
+| Operation | Target | Notes |
+|-----------|--------|-------|
+| Point query | < 1ms | Single row/document lookup |
+| Range scan (1000 rows) | < 10ms | Sequential scan with filter |
+| Vector search (top 10) | < 5ms | HNSW approximate search |
+| Graph traversal (3 hops) | < 20ms | BFS/DFS with filters |
+| Complex JOIN (3 tables) | < 50ms | Hash joins with indexes |
+| Aggregation (1M rows) | < 100ms | Parallel aggregation |
+
+### Throughput Targets
+- **Inserts**: > 100k/sec (single node)
+- **Point queries**: > 500k/sec
+- **Vector search**: > 10k qps
+- **Mixed workload**: > 50k tps
+
+## Performance Best Practices
+- Use `parking_lot` locks instead of `std::sync` (faster)
 - Prefer `Arc<RwLock<T>>` for shared state
 - Use `rayon` for parallel iteration when appropriate
 - Build in `--release` mode for benchmarks
-- Profile before optimizing
+- Profile before optimizing (but design for optimization upfront)
 
 ## Dependencies
 - Async runtime: `tokio` (v1, "full" features)
