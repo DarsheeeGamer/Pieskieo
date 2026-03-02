@@ -53,11 +53,53 @@ pub struct SchemaField {
     pub unique: bool,
     #[serde(default)]
     pub r#type: Option<String>,
+    #[serde(default)]
+    pub default: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SchemaDef {
+    pub fields: HashMap<String, SchemaField>,
+    #[serde(default)]
+    pub constraints: Vec<ConstraintDef>,
+    #[serde(default)]
+    pub indexes: Vec<IndexDef>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SchemaDef {
-    pub fields: HashMap<String, SchemaField>,
+pub enum ConstraintDef {
+    Unique { name: String, fields: Vec<String> },
+    PrimaryKey { name: String, fields: Vec<String> },
+    Check { name: String, condition: crate::pql::ast::Condition },
+    ForeignKey(ForeignKeyDef),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ForeignKeyDef {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub referenced_table: String,
+    pub referenced_columns: Vec<String>,
+    pub on_delete: ReferentialAction,
+    pub on_update: ReferentialAction,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IndexDef {
+    pub name: String,
+    pub fields: Vec<String>,
+    pub index_type: crate::pql::ast::IndexType,
+}
+
+#[derive(Clone, Debug, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ReferentialAction {
+    #[default]
+    NoAction,
+    Restrict,
+    Cascade,
+    SetNull,
+    SetDefault,
 }
 
 #[derive(Default, Clone, Serialize, Deserialize, Debug)]
@@ -1213,7 +1255,7 @@ impl PieskieoDb {
         if !self.owns(&src) {
             return Err(PieskieoError::WrongShard);
         }
-        let payload = bincode::serialize(&crate::graph::Edge { src, dst, weight })?;
+        let payload = bincode::serialize(&crate::graph::Edge { src, dst, weight, edge_type: None, properties: None })?;
         self.append_record(&RecordKind::Put {
             family: DataFamily::Graph,
             key: src,
@@ -2568,7 +2610,500 @@ impl PieskieoDb {
             }
         }
     }
+
+    /// Check if a table (row-schema) exists for the given name.
+    pub fn has_row_schema(&self, ns: Option<&str>, name: &str) -> bool {
+        let ns_key = Self::ns(ns);
+        let guard = self.data.read();
+        guard.row_schema
+            .get(&ns_key)
+            .map(|m| m.contains_key(name))
+            .unwrap_or(false)
+    }
+
+    /// Apply ALTER TABLE operations to a table schema.
+    pub fn alter_table(
+        &self,
+        ns: Option<&str>,
+        name: &str,
+        operations: Vec<crate::pql::ast::AlterTableOperation>,
+    ) -> Result<()> {
+        use crate::pql::ast::AlterTableOperation;
+        let ns_key = Self::ns(ns);
+        let mut guard = self.data.write();
+        let schema_map = guard.row_schema.entry(ns_key.clone()).or_default();
+        let schema = schema_map.entry(name.to_string()).or_default();
+        for op in operations {
+            match op {
+                AlterTableOperation::AddColumn(col) => {
+                    let type_str = match col.data_type {
+                        crate::pql::ast::DataType::String => "string",
+                        crate::pql::ast::DataType::Integer => "integer",
+                        crate::pql::ast::DataType::Float => "float",
+                        crate::pql::ast::DataType::Boolean => "boolean",
+                        crate::pql::ast::DataType::Date => "date",
+                        crate::pql::ast::DataType::Timestamp => "timestamp",
+                        crate::pql::ast::DataType::Uuid => "uuid",
+                        crate::pql::ast::DataType::Json => "json",
+                        crate::pql::ast::DataType::Vector(_) => "vector",
+                        crate::pql::ast::DataType::Bytes => "bytes",
+                        crate::pql::ast::DataType::Serial => "integer",
+                        crate::pql::ast::DataType::BigSerial => "bigint",
+                    }.to_string();
+                    schema.fields.insert(col.name.clone(), SchemaField {
+                        required: !col.nullable,
+                        unique: col.primary_key || col.unique,
+                        r#type: Some(type_str),
+                        default: col.default.map(|l| match l {
+                            crate::pql::ast::Literal::Null => serde_json::Value::Null,
+                            crate::pql::ast::Literal::Bool(b) => serde_json::Value::Bool(b),
+                            crate::pql::ast::Literal::Integer(i) => serde_json::json!(i),
+                            crate::pql::ast::Literal::Float(f) => serde_json::json!(f),
+                            crate::pql::ast::Literal::String(s) => serde_json::Value::String(s),
+                            crate::pql::ast::Literal::Uuid(u) => serde_json::Value::String(u.to_string()),
+                        }),
+                    });
+                }
+                AlterTableOperation::DropColumn { name: col_name } => {
+                    schema.fields.remove(&col_name);
+                }
+                AlterTableOperation::RenameColumn { from, to } => {
+                    if let Some(field) = schema.fields.remove(&from) {
+                        schema.fields.insert(to, field);
+                    }
+                }
+                AlterTableOperation::AlterColumnType { name: col_name, .. } => {
+                    if let Some(f) = schema.fields.get_mut(&col_name) {
+                        // type already stored as string, update if needed
+                        let _ = f;
+                    }
+                }
+                AlterTableOperation::SetDefault { name: col_name, default: _expr } => {
+                    if let Some(f) = schema.fields.get_mut(&col_name) {
+                        f.default = None; // simplified: can't eval expr here
+                        let _ = f;
+                    }
+                }
+                AlterTableOperation::DropDefault { name: col_name } => {
+                    if let Some(f) = schema.fields.get_mut(&col_name) {
+                        f.default = None;
+                    }
+                }
+                AlterTableOperation::AddConstraint(c) => {
+                    let def = match c {
+                        crate::pql::ast::Constraint::Unique { name: cn, fields } => {
+                            ConstraintDef::Unique {
+                                name: cn.unwrap_or_else(|| format!("unique_{}", fields.join("_"))),
+                                fields,
+                            }
+                        }
+                        crate::pql::ast::Constraint::PrimaryKey { name: cn, fields } => {
+                            ConstraintDef::PrimaryKey {
+                                name: cn.unwrap_or_else(|| format!("pk_{}", fields.join("_"))),
+                                fields,
+                            }
+                        }
+                        crate::pql::ast::Constraint::Check { name: cn, condition } => {
+                            ConstraintDef::Check {
+                                name: cn.unwrap_or_else(|| "check".to_string()),
+                                condition,
+                            }
+                        }
+                        crate::pql::ast::Constraint::ForeignKey { name: cn, fields, ref_table, ref_fields, on_delete, on_update } => {
+                            let map_action = |a: crate::pql::ast::ReferentialAction| match a {
+                                crate::pql::ast::ReferentialAction::NoAction => ReferentialAction::NoAction,
+                                crate::pql::ast::ReferentialAction::Restrict => ReferentialAction::Restrict,
+                                crate::pql::ast::ReferentialAction::Cascade => ReferentialAction::Cascade,
+                                crate::pql::ast::ReferentialAction::SetNull => ReferentialAction::SetNull,
+                                crate::pql::ast::ReferentialAction::SetDefault => ReferentialAction::SetDefault,
+                            };
+                            ConstraintDef::ForeignKey(ForeignKeyDef {
+                                name: cn.unwrap_or_else(|| format!("fk_{}_{}", ref_table, fields.join("_"))),
+                                columns: fields,
+                                referenced_table: ref_table,
+                                referenced_columns: ref_fields,
+                                on_delete: map_action(on_delete),
+                                on_update: map_action(on_update),
+                                enabled: true,
+                            })
+                        }
+                    };
+                    schema.constraints.push(def);
+                }
+                AlterTableOperation::DropConstraint { name: cn } => {
+                    schema.constraints.retain(|c| match c {
+                        ConstraintDef::Unique { name, .. } => name != &cn,
+                        ConstraintDef::PrimaryKey { name, .. } => name != &cn,
+                        ConstraintDef::Check { name, .. } => name != &cn,
+                        ConstraintDef::ForeignKey(fk) => fk.name != cn,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Drop an index from a table.
+    pub fn drop_index(&self, _ns: Option<&str>, _table: &str, _name: &str) -> Result<()> {
+        // Index metadata stored in schema; just a no-op for now
+        Ok(())
+    }
+
+    /// Drop a table (row collection).
+    pub fn drop_table(&self, ns: Option<&str>, name: &str, _cascade: bool) -> Result<()> {
+        let ns_key = Self::ns(ns);
+        let mut guard = self.data.write();
+        if let Some(ns_map) = guard.rows.get_mut(&ns_key) {
+            ns_map.remove(name);
+        }
+        if let Some(ns_map) = guard.row_schema.get_mut(&ns_key) {
+            ns_map.remove(name);
+        }
+        Ok(())
+    }
+
+    /// Drop a document collection.
+    pub fn drop_collection(&self, ns: Option<&str>, name: &str, _cascade: bool) -> Result<()> {
+        let ns_key = Self::ns(ns);
+        let mut guard = self.data.write();
+        if let Some(ns_map) = guard.docs.get_mut(&ns_key) {
+            ns_map.remove(name);
+        }
+        if let Some(ns_map) = guard.doc_schema.get_mut(&ns_key) {
+            ns_map.remove(name);
+        }
+        Ok(())
+    }
+
+    /// Create an index on a collection.
+    pub fn create_index(
+        &self,
+        ns: Option<&str>,
+        name: &str,
+        on: &str,
+        fields: Vec<String>,
+        index_type: crate::pql::ast::IndexType,
+    ) -> Result<()> {
+        let ns_key = Self::ns(ns);
+        let mut guard = self.data.write();
+        // Try row schema first, then doc schema
+        if let Some(ns_map) = guard.row_schema.get_mut(&ns_key) {
+            if let Some(schema) = ns_map.get_mut(on) {
+                schema.indexes.push(IndexDef { name: name.to_string(), fields, index_type });
+                return Ok(());
+            }
+        }
+        if let Some(ns_map) = guard.doc_schema.get_mut(&ns_key) {
+            if let Some(schema) = ns_map.get_mut(on) {
+                schema.indexes.push(IndexDef { name: name.to_string(), fields, index_type });
+                return Ok(());
+            }
+        }
+        // Collection doesn't exist yet - create schema entry
+        guard.doc_schema
+            .entry(ns_key)
+            .or_default()
+            .entry(on.to_string())
+            .or_default()
+            .indexes
+            .push(IndexDef { name: name.to_string(), fields, index_type });
+        Ok(())
+    }
+
+    /// List all document collections in a namespace.
+    pub fn list_collections(&self, ns: Option<&str>) -> Vec<String> {
+        let ns_key = Self::ns(ns);
+        let guard = self.data.read();
+        let mut names: std::collections::HashSet<String> = std::collections::HashSet::new();
+        if let Some(ns_map) = guard.docs.get(&ns_key) {
+            for k in ns_map.keys() {
+                names.insert(k.clone());
+            }
+        }
+        if let Some(ns_map) = guard.doc_schema.get(&ns_key) {
+            for k in ns_map.keys() {
+                names.insert(k.clone());
+            }
+        }
+        names.into_iter().collect()
+    }
+
+    /// List all row tables in a namespace.
+    pub fn list_tables(&self, ns: Option<&str>) -> Vec<String> {
+        let ns_key = Self::ns(ns);
+        let guard = self.data.read();
+        let mut names: std::collections::HashSet<String> = std::collections::HashSet::new();
+        if let Some(ns_map) = guard.rows.get(&ns_key) {
+            for k in ns_map.keys() {
+                names.insert(k.clone());
+            }
+        }
+        if let Some(ns_map) = guard.row_schema.get(&ns_key) {
+            for k in ns_map.keys() {
+                names.insert(k.clone());
+            }
+        }
+        names.into_iter().collect()
+    }
+
+    /// List all indexes on a table.
+    pub fn list_indexes(&self, ns: Option<&str>, table: &str) -> Vec<String> {
+        let ns_key = Self::ns(ns);
+        let guard = self.data.read();
+        if let Some(ns_map) = guard.row_schema.get(&ns_key) {
+            if let Some(schema) = ns_map.get(table) {
+                return schema.indexes.iter().map(|i| i.name.clone()).collect();
+            }
+        }
+        if let Some(ns_map) = guard.doc_schema.get(&ns_key) {
+            if let Some(schema) = ns_map.get(table) {
+                return schema.indexes.iter().map(|i| i.name.clone()).collect();
+            }
+        }
+        Vec::new()
+    }
+
+    /// Get schema fields for a collection/table.
+    pub fn get_schema_fields(&self, ns: Option<&str>, name: &str) -> Vec<(String, String)> {
+        let ns_key = Self::ns(ns);
+        let guard = self.data.read();
+        let schema = guard.row_schema.get(&ns_key)
+            .and_then(|m| m.get(name))
+            .or_else(|| guard.doc_schema.get(&ns_key).and_then(|m| m.get(name)));
+        match schema {
+            Some(s) => s.fields.iter()
+                .map(|(k, v)| (k.clone(), v.r#type.clone().unwrap_or_else(|| "any".to_string())))
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// Create a view by storing the statement as JSON.
+    pub fn create_view(&self, name: &str, stmt: &crate::pql::ast::Statement) -> Result<()> {
+        let mut json = serde_json::to_value(stmt)?;
+        if let Some(obj) = json.as_object_mut() {
+            obj.insert("__view_name__".to_string(), serde_json::Value::String(name.to_string()));
+        }
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
+        self.put_doc_ns(Some("__system__"), Some("__views__"), id, json)?;
+        Ok(())
+    }
+
+    /// Get a view statement by name.
+    pub fn get_view(&self, name: &str) -> Option<crate::pql::ast::Statement> {
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
+        let json = self.get_doc_ns(Some("__system__"), Some("__views__"), &id)?;
+        // Remove the __view_name__ key before deserializing
+        let mut json = json;
+        if let Some(obj) = json.as_object_mut() {
+            obj.remove("__view_name__");
+        }
+        serde_json::from_value(json).ok()
+    }
+
+    /// Drop a view by name.
+    pub fn drop_view(&self, name: &str) -> Result<()> {
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
+        self.delete_doc_ns(Some("__system__"), Some("__views__"), &id)?;
+        Ok(())
+    }
+
+    /// Create a sequence.
+    pub fn create_sequence(
+        &self,
+        name: &str,
+        start: i64,
+        increment: i64,
+        min_value: Option<i64>,
+        max_value: Option<i64>,
+        cycle: bool,
+        if_not_exists: bool,
+    ) -> Result<()> {
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
+        if if_not_exists && self.get_doc_ns(Some("__system__"), Some("__sequences__"), &id).is_some() {
+            return Ok(());
+        }
+        let json = serde_json::json!({
+            "__seq_name__": name,
+            "current": start,
+            "start": start,
+            "increment": increment,
+            "min_value": min_value,
+            "max_value": max_value,
+            "cycle": cycle,
+        });
+        self.put_doc_ns(Some("__system__"), Some("__sequences__"), id, json)?;
+        Ok(())
+    }
+
+    /// Drop a sequence.
+    pub fn drop_sequence(&self, name: &str, if_exists: bool) -> Result<()> {
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
+        if if_exists && self.get_doc_ns(Some("__system__"), Some("__sequences__"), &id).is_none() {
+            return Ok(());
+        }
+        self.delete_doc_ns(Some("__system__"), Some("__sequences__"), &id)?;
+        Ok(())
+    }
+
+    /// List all sequence names.
+    pub fn list_sequences(&self) -> Vec<String> {
+        self.query_docs_ns(Some("__system__"), Some("__sequences__"), &std::collections::HashMap::new(), 1000, 0)
+            .into_iter()
+            .filter_map(|(_, json)| json.get("__seq_name__").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .collect()
+    }
+
+    /// Advance a sequence and return next value.
+    pub fn nextval(&self, name: &str) -> Result<i64> {
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
+        let json = self.get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
+            .ok_or_else(|| crate::error::PieskieoError::Internal(format!("sequence '{}' not found", name)))?;
+        let current = json.get("current").and_then(|v: &serde_json::Value| v.as_i64()).unwrap_or(1);
+        let increment = json.get("increment").and_then(|v: &serde_json::Value| v.as_i64()).unwrap_or(1);
+        let next = current + increment;
+        let mut updated = json;
+        if let Some(obj) = updated.as_object_mut() {
+            obj.insert("current".to_string(), serde_json::json!(next));
+        }
+        self.put_doc_ns(Some("__system__"), Some("__sequences__"), id, updated)?;
+        Ok(current)
+    }
+
+    /// Get current value of a sequence without advancing it.
+    pub fn currval(&self, name: &str) -> Result<i64> {
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
+        let json = self.get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
+            .ok_or_else(|| crate::error::PieskieoError::Internal(format!("sequence '{}' not found", name)))?;
+        Ok(json.get("current").and_then(|v: &serde_json::Value| v.as_i64()).unwrap_or(1))
+    }
+
+    /// Set sequence value.
+    pub fn setval(&self, name: &str, value: i64) -> Result<i64> {
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
+        let json = self.get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
+            .ok_or_else(|| crate::error::PieskieoError::Internal(format!("sequence '{}' not found", name)))?;
+        let mut updated = json;
+        if let Some(obj) = updated.as_object_mut() {
+            obj.insert("current".to_string(), serde_json::json!(value));
+        }
+        self.put_doc_ns(Some("__system__"), Some("__sequences__"), id, updated)?;
+        Ok(value)
+    }
+
+    /// Add a typed edge between two nodes.
+    pub fn add_typed_edge(&self, src: Uuid, dst: Uuid, weight: f32, edge_type: String) -> Result<()> {
+        self.graph.add_typed_edge(src, dst, weight, Some(edge_type), None);
+        Ok(())
+    }
+
+    /// Get incoming edges for a node.
+    pub fn neighbors_in(&self, id: Uuid, limit: usize) -> Vec<crate::graph::Edge> {
+        self.graph.neighbors_in(id, limit)
+    }
+
+    /// Get both incoming and outgoing edges for a node.
+    pub fn neighbors_both(&self, id: Uuid, limit: usize) -> Vec<crate::graph::Edge> {
+        self.graph.neighbors_both(id, limit)
+    }
+
+    /// Remove an edge between two nodes.
+    pub fn remove_edge(&self, src: Uuid, dst: Uuid) -> Result<()> {
+        self.graph.remove_edge(src, dst);
+        Ok(())
+    }
+
+    /// Get a document from any collection by ID (tries all namespaces).
+    pub fn get_any_doc(&self, id: &Uuid) -> Option<serde_json::Value> {
+        let guard = self.data.read();
+        for ns_map in guard.docs.values() {
+            for col_map in ns_map.values() {
+                if let Some(v) = col_map.get(id) {
+                    return Some(v.clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// Get a row from any table by ID (tries all namespaces).
+    pub fn get_any_row(&self, id: &Uuid) -> Option<serde_json::Value> {
+        let guard = self.data.read();
+        for ns_map in guard.rows.values() {
+            for tbl_map in ns_map.values() {
+                if let Some(v) = tbl_map.get(id) {
+                    return Some(v.clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// Compute BM25 scores for all documents in a collection.
+    pub fn bm25_scores_doc(&self, ns: Option<&str>, col: &str, query: &str) -> Vec<(Uuid, f64)> {
+        let ns_key = Self::ns(ns);
+        let guard = self.data.read();
+        let docs: Vec<(Uuid, serde_json::Value)> = guard.docs.get(&ns_key)
+            .and_then(|m| m.get(col))
+            .map(|m| m.iter().map(|(id, v)| (*id, v.clone())).collect())
+            .unwrap_or_default();
+        drop(guard);
+        bm25_scores_impl(&docs, query)
+    }
+
+    /// Compute BM25 scores for all rows in a table.
+    pub fn bm25_scores_row(&self, ns: Option<&str>, tbl: &str, query: &str) -> Vec<(Uuid, f64)> {
+        let ns_key = Self::ns(ns);
+        let guard = self.data.read();
+        let rows: Vec<(Uuid, serde_json::Value)> = guard.rows.get(&ns_key)
+            .and_then(|m| m.get(tbl))
+            .map(|m| m.iter().map(|(id, v)| (*id, v.clone())).collect())
+            .unwrap_or_default();
+        drop(guard);
+        bm25_scores_impl(&rows, query)
+    }
 }
+
+fn bm25_scores_impl(docs: &[(Uuid, serde_json::Value)], query: &str) -> Vec<(Uuid, f64)> {
+    let k1 = 1.5_f64;
+    let b = 0.75_f64;
+    let query_terms: Vec<String> = query.split_whitespace().map(|s| s.to_lowercase()).collect();
+    if query_terms.is_empty() {
+        return docs.iter().map(|(id, _)| (*id, 0.0)).collect();
+    }
+
+    // Build term frequencies and doc lengths
+    let tokenized: Vec<Vec<String>> = docs.iter().map(|(_, json)| {
+        let text = json.to_string().to_lowercase();
+        text.split_whitespace().map(|s| s.to_string()).collect()
+    }).collect();
+
+    let avg_len = if tokenized.is_empty() {
+        1.0_f64
+    } else {
+        tokenized.iter().map(|t| t.len() as f64).sum::<f64>() / tokenized.len() as f64
+    };
+
+    let n = docs.len() as f64;
+
+    let mut scores = Vec::with_capacity(docs.len());
+    for (idx, (id, _)) in docs.iter().enumerate() {
+        let doc_terms = &tokenized[idx];
+        let doc_len = doc_terms.len() as f64;
+        let mut score = 0.0_f64;
+        for term in &query_terms {
+            let tf = doc_terms.iter().filter(|t| t.as_str() == term.as_str()).count() as f64;
+            let df = tokenized.iter().filter(|d| d.iter().any(|t| t.as_str() == term.as_str())).count() as f64;
+            if df == 0.0 || tf == 0.0 { continue; }
+            let idf = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
+            let tf_norm = (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * doc_len / avg_len));
+            score += idf * tf_norm;
+        }
+        scores.push((*id, score));
+    }
+    scores
+}
+
 #[derive(Clone, Copy)]
 pub struct VectorParams {
     pub metric: VectorMetric,

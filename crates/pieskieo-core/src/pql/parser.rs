@@ -108,7 +108,7 @@ impl Parser {
             }
         }
 
-        Ok(Statement::Query { source, operations })
+        Ok(Statement::Query { with: vec![], source, operations })
     }
 
     fn parse_source_expr(&mut self) -> Result<SourceExpr, ParseError> {
@@ -428,7 +428,7 @@ impl Parser {
             self.advance();
         }
 
-        Ok(Operation::GroupBy { fields })
+        Ok(Operation::GroupBy { fields, mode: crate::pql::ast::GroupByMode::Regular })
     }
 
     fn parse_compute(&mut self) -> Result<Operation, ParseError> {
@@ -821,12 +821,78 @@ impl Parser {
     }
 
     fn parse_identifier(&mut self) -> Result<String, ParseError> {
+        // Many tokens can be used as identifiers (non-reserved keywords).
+        // This mirrors PostgreSQL's approach where most keywords are "unreserved"
+        // and can appear as table/column names in unambiguous positions.
+        let keyword_as_ident = match &self.current_token {
+            Some(Token::Identifier(name)) => Some(name.clone()),
+            // Graph / vector / schema keywords that are common as names
+            Some(Token::Nodes)     => Some("nodes".to_string()),
+            Some(Token::Edges)     => Some("edges".to_string()),
+            Some(Token::Node)      => Some("node".to_string()),
+            Some(Token::Edge)      => Some("edge".to_string()),
+            Some(Token::Path)      => Some("path".to_string()),
+            Some(Token::Match)     => Some("match".to_string()),
+            Some(Token::Index)     => Some("index".to_string()),
+            Some(Token::Table)     => Some("table".to_string()),
+            Some(Token::Type)      => Some("type".to_string()),
+            Some(Token::Vector)    => Some("vector".to_string()),
+            Some(Token::All)       => Some("all".to_string()),
+            Some(Token::Any)       => Some("any".to_string()),
+            Some(Token::Top)       => Some("top".to_string()),
+            Some(Token::Depth)     => Some("depth".to_string()),
+            Some(Token::Shortest)  => Some("shortest".to_string()),
+            Some(Token::Similar)   => Some("similar".to_string()),
+            Some(Token::To)        => Some("to".to_string()),
+            Some(Token::Threshold) => Some("threshold".to_string()),
+            Some(Token::Metric)    => Some("metric".to_string()),
+            Some(Token::Embedding) => Some("embedding".to_string()),
+            Some(Token::Traverse)  => Some("traverse".to_string()),
+            Some(Token::Compute)   => Some("compute".to_string()),
+            Some(Token::Distinct)  => Some("distinct".to_string()),
+            Some(Token::Asc)       => Some("asc".to_string()),
+            Some(Token::Desc)      => Some("desc".to_string()),
+            Some(Token::Offset)    => Some("offset".to_string()),
+            Some(Token::Limit)     => Some("limit".to_string()),
+            Some(Token::Inner)     => Some("inner".to_string()),
+            Some(Token::Full)      => Some("full".to_string()),
+            Some(Token::Cross)     => Some("cross".to_string()),
+            Some(Token::Join)      => Some("join".to_string()),
+            Some(Token::On)        => Some("on".to_string()),
+            Some(Token::As)        => Some("as".to_string()),
+            Some(Token::In)        => Some("in".to_string()),
+            Some(Token::Is)        => Some("is".to_string()),
+            Some(Token::Between)   => Some("between".to_string()),
+            Some(Token::Exists)    => Some("exists".to_string()),
+            Some(Token::Left)      => Some("left".to_string()),
+            Some(Token::Right)     => Some("right".to_string()),
+            Some(Token::Unique)    => Some("unique".to_string()),
+            Some(Token::Check)     => Some("check".to_string()),
+            Some(Token::References) => Some("references".to_string()),
+            Some(Token::Constraint) => Some("constraint".to_string()),
+            Some(Token::ForeignKey) => Some("foreign_key".to_string()),
+            Some(Token::PrimaryKey) => Some("primary_key".to_string()),
+            Some(Token::Explain)   => Some("explain".to_string()),
+            Some(Token::String_)   => Some("string".to_string()),
+            Some(Token::Integer_)  => Some("integer".to_string()),
+            Some(Token::Float_)    => Some("float".to_string()),
+            Some(Token::Boolean_)  => Some("boolean".to_string()),
+            Some(Token::Date_)     => Some("date".to_string()),
+            Some(Token::Timestamp_) => Some("timestamp".to_string()),
+            Some(Token::Uuid_)     => Some("uuid".to_string()),
+            Some(Token::Json_)     => Some("json".to_string()),
+            Some(Token::Bytes_)    => Some("bytes".to_string()),
+            Some(Token::GroupBy)   => Some("group_by".to_string()),
+            Some(Token::OrderBy)   => Some("order_by".to_string()),
+            // Null literal used as field name
+            Some(Token::Null)      => Some("null".to_string()),
+            _ => None,
+        };
+        if let Some(name) = keyword_as_ident {
+            self.advance();
+            return Ok(name);
+        }
         match &self.current_token {
-            Some(Token::Identifier(name)) => {
-                let result = name.clone();
-                self.advance();
-                Ok(result)
-            }
             Some(tok) => Err(ParseError::UnexpectedToken {
                 expected: "identifier".to_string(),
                 found: tok.clone(),
@@ -898,7 +964,7 @@ mod tests {
         assert!(result.is_ok());
         let stmt = result.unwrap();
 
-        if let Statement::Query { source, operations } = stmt {
+        if let Statement::Query { source, operations, .. } = stmt {
             assert_eq!(source, SourceExpr::Collection("users".to_string()));
             assert_eq!(operations.len(), 2); // WHERE + SELECT
         } else {

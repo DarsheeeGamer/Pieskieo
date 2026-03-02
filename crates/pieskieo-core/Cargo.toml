@@ -24,4 +24,38 @@ async-trait.workspace = true
 tempfile.workspace = true
 rayon.workspace = true
 hnsw_rs.workspace = true
+regex.workspace = true
+chrono.workspace = true
 sysinfo = "0.30"
+
+[[test]]
+name = "pql_mongo_ops"
+path = "tests/pql_mongo_ops.rs"
+
+[[test]]
+name = "pql_chemistry"
+path = "tests/pql_chemistry.rs"
+
+[[test]]
+name = "pql_validation"
+path = "tests/pql_validation.rs"
+
+[[test]]
+name = "pql_derivatives"
+path = "tests/pql_derivatives.rs"
+
+[[test]]
+name = "pql_window_agg"
+path = "tests/pql_window_agg.rs"
+
+[[test]]
+name = "pql_string_pg"
+path = "tests/pql_string_pg.rs"
+
+[[test]]
+name = "pql_json_ops"
+path = "tests/pql_json_ops.rs"
+
+[[test]]
+name = "pql_datetime"
+path = "tests/pql_datetime.rs"
