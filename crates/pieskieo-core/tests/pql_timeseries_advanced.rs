@@ -1,5 +1,8 @@
 /// Advanced integration tests for PQL time-series forecasting and anomaly detection functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -30,12 +33,28 @@ fn test_simple_moving_avg_basic() {
     match r.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
             // windows(3) over 5 elements → 3 results
-            assert_eq!(arr.len(), 3, "SMA window=3 over 5 elements should yield 3 values");
+            assert_eq!(
+                arr.len(),
+                3,
+                "SMA window=3 over 5 elements should yield 3 values"
+            );
             // [1,2,3]→2, [2,3,4]→3, [3,4,5]→4
             let vals: Vec<f64> = arr.iter().map(as_f64).collect();
-            assert!((vals[0] - 2.0).abs() < 1e-9, "first SMA = 2.0, got {}", vals[0]);
-            assert!((vals[1] - 3.0).abs() < 1e-9, "second SMA = 3.0, got {}", vals[1]);
-            assert!((vals[2] - 4.0).abs() < 1e-9, "third SMA = 4.0, got {}", vals[2]);
+            assert!(
+                (vals[0] - 2.0).abs() < 1e-9,
+                "first SMA = 2.0, got {}",
+                vals[0]
+            );
+            assert!(
+                (vals[1] - 3.0).abs() < 1e-9,
+                "second SMA = 3.0, got {}",
+                vals[1]
+            );
+            assert!(
+                (vals[2] - 4.0).abs() < 1e-9,
+                "third SMA = 4.0, got {}",
+                vals[2]
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -64,7 +83,8 @@ fn test_simple_moving_avg_window_one() {
 #[test]
 fn test_exponential_smoothing_basic() {
     let (_dir, _db, ex) = setup("ts_ema", serde_json::json!({"nums": [1, 2, 3]}));
-    let mut p = Parser::new("QUERY ts_ema COMPUTE res = EXPONENTIAL_SMOOTHING(nums, 0.5) SELECT res;");
+    let mut p =
+        Parser::new("QUERY ts_ema COMPUTE res = EXPONENTIAL_SMOOTHING(nums, 0.5) SELECT res;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
@@ -90,7 +110,11 @@ fn test_ema_smooth_alias() {
             assert_eq!(arr.len(), 3);
             // First value = 10.0; second = 0.3*20 + 0.7*10 = 13.0
             assert!((as_f64(&arr[0]) - 10.0).abs() < 1e-9);
-            assert!((as_f64(&arr[1]) - 13.0).abs() < 1e-9, "second EMA_SMOOTH = 13.0, got {}", as_f64(&arr[1]));
+            assert!(
+                (as_f64(&arr[1]) - 13.0).abs() < 1e-9,
+                "second EMA_SMOOTH = 13.0, got {}",
+                as_f64(&arr[1])
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -101,7 +125,8 @@ fn test_ema_smooth_alias() {
 #[test]
 fn test_double_exponential_basic() {
     let (_dir, _db, ex) = setup("ts_holt", serde_json::json!({"nums": [1, 2, 3, 4, 5]}));
-    let mut p = Parser::new("QUERY ts_holt COMPUTE res = DOUBLE_EXPONENTIAL(nums, 0.3, 0.1) SELECT res;");
+    let mut p =
+        Parser::new("QUERY ts_holt COMPUTE res = DOUBLE_EXPONENTIAL(nums, 0.3, 0.1) SELECT res;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
@@ -121,10 +146,17 @@ fn test_holt_smooth_alias() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
-            assert_eq!(arr.len(), 5, "HOLT_SMOOTH alias returns same length as input");
+            assert_eq!(
+                arr.len(),
+                5,
+                "HOLT_SMOOTH alias returns same length as input"
+            );
             // Values should be positive and increasing for a linear series
             for v in arr {
-                assert!(as_f64(v) > 0.0, "all Holt smoothed values should be positive");
+                assert!(
+                    as_f64(v) > 0.0,
+                    "all Holt smoothed values should be positive"
+                );
             }
         }
         other => panic!("expected Array, got {:?}", other),
@@ -143,7 +175,11 @@ fn test_simple_forecast_basic() {
             assert_eq!(arr.len(), 3, "forecast n=3 should return 3 values");
             // All should equal the last value (3)
             for v in arr {
-                assert_eq!(as_f64(v) as i64, 3, "naive forecast should repeat last value");
+                assert_eq!(
+                    as_f64(v) as i64,
+                    3,
+                    "naive forecast should repeat last value"
+                );
             }
         }
         other => panic!("expected Array, got {:?}", other),
@@ -160,7 +196,11 @@ fn test_naive_forecast_alias() {
             assert_eq!(arr.len(), 2);
             for v in arr {
                 // last value = 30
-                assert_eq!(as_f64(v) as i64, 30, "NAIVE_FORECAST should repeat last value 30");
+                assert_eq!(
+                    as_f64(v) as i64,
+                    30,
+                    "NAIVE_FORECAST should repeat last value 30"
+                );
             }
         }
         other => panic!("expected Array, got {:?}", other),
@@ -199,8 +239,16 @@ fn test_trend_forecast_alias() {
             let v0 = as_f64(&arr[0]);
             let v1 = as_f64(&arr[1]);
             // slope=2, series [0,2,4,6], next would be 8, 10
-            assert!((v0 - 8.0).abs() < 1e-6, "TREND_FORECAST first = 8.0, got {}", v0);
-            assert!((v1 - 10.0).abs() < 1e-6, "TREND_FORECAST second = 10.0, got {}", v1);
+            assert!(
+                (v0 - 8.0).abs() < 1e-6,
+                "TREND_FORECAST first = 8.0, got {}",
+                v0
+            );
+            assert!(
+                (v1 - 10.0).abs() < 1e-6,
+                "TREND_FORECAST second = 10.0, got {}",
+                v1
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -219,7 +267,11 @@ fn test_seasonal_adjust_basic() {
         Some(Value::Array(arr)) => {
             assert_eq!(arr.len(), 4);
             for v in arr {
-                assert!((as_f64(v) - 1.0).abs() < 1e-9, "deseasonalized value should be 1.0, got {}", as_f64(v));
+                assert!(
+                    (as_f64(v) - 1.0).abs() < 1e-9,
+                    "deseasonalized value should be 1.0, got {}",
+                    as_f64(v)
+                );
             }
         }
         other => panic!("expected Array, got {:?}", other),
@@ -235,7 +287,11 @@ fn test_deseasonalize_alias() {
         Some(Value::Array(arr)) => {
             assert_eq!(arr.len(), 4);
             for v in arr {
-                assert!((as_f64(v) - 1.0).abs() < 1e-9, "DESEASONALIZE result should be 1.0, got {}", as_f64(v));
+                assert!(
+                    (as_f64(v) - 1.0).abs() < 1e-9,
+                    "DESEASONALIZE result should be 1.0, got {}",
+                    as_f64(v)
+                );
             }
         }
         other => panic!("expected Array, got {:?}", other),
@@ -272,7 +328,11 @@ fn test_zscore_outlier_alias() {
     match r.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
             assert_eq!(arr.len(), 6);
-            assert_eq!(arr[5], Value::Bool(true), "last value (1000) should be anomaly");
+            assert_eq!(
+                arr[5],
+                Value::Bool(true),
+                "last value (1000) should be anomaly"
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -314,12 +374,19 @@ fn test_fence_outlier_alias() {
 #[test]
 fn test_cusum_detect_basic() {
     // [1,1,1,1,10,10,10] — shift happens around index 4
-    let (_dir, _db, ex) = setup("ts_cu", serde_json::json!({"nums": [1, 1, 1, 1, 10, 10, 10]}));
+    let (_dir, _db, ex) = setup(
+        "ts_cu",
+        serde_json::json!({"nums": [1, 1, 1, 1, 10, 10, 10]}),
+    );
     let mut p = Parser::new("QUERY ts_cu COMPUTE res = CUSUM_DETECT(nums, 5.0) SELECT res;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Integer(idx)) => {
-            assert!(*idx >= 4, "CUSUM should detect change at or after index 4, got {}", idx);
+            assert!(
+                *idx >= 4,
+                "CUSUM should detect change at or after index 4, got {}",
+                idx
+            );
         }
         other => panic!("expected Integer, got {:?}", other),
     }
@@ -327,12 +394,18 @@ fn test_cusum_detect_basic() {
 
 #[test]
 fn test_cumsum_change_alias() {
-    let (_dir, _db, ex) = setup("ts_cc", serde_json::json!({"nums": [1, 1, 1, 1, 10, 10, 10]}));
+    let (_dir, _db, ex) = setup(
+        "ts_cc",
+        serde_json::json!({"nums": [1, 1, 1, 1, 10, 10, 10]}),
+    );
     let mut p = Parser::new("QUERY ts_cc COMPUTE res = CUMSUM_CHANGE(nums, 5.0) SELECT res;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Integer(idx)) => {
-            assert!(*idx >= 4, "CUMSUM_CHANGE alias should detect change at or after index 4");
+            assert!(
+                *idx >= 4,
+                "CUMSUM_CHANGE alias should detect change at or after index 4"
+            );
         }
         other => panic!("expected Integer, got {:?}", other),
     }
@@ -383,8 +456,12 @@ fn test_bb_bands_alias() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
-            assert!(obj.contains_key("upper") && obj.contains_key("middle") && obj.contains_key("lower"),
-                "BB_BANDS alias should return Object with upper/middle/lower");
+            assert!(
+                obj.contains_key("upper")
+                    && obj.contains_key("middle")
+                    && obj.contains_key("lower"),
+                "BB_BANDS alias should return Object with upper/middle/lower"
+            );
         }
         other => panic!("expected Object, got {:?}", other),
     }
@@ -400,7 +477,11 @@ fn test_grubbs_outlier_basic() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Float(g)) => {
-            assert!(*g > 1.0, "Grubbs stat for [1,2,3,100] should be > 1.0, got {}", g);
+            assert!(
+                *g > 1.0,
+                "Grubbs stat for [1,2,3,100] should be > 1.0, got {}",
+                g
+            );
         }
         other => panic!("expected Float, got {:?}", other),
     }
@@ -413,7 +494,10 @@ fn test_grubbs_stat_alias() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Float(g)) => {
-            assert!(*g > 1.0, "GRUBBS_STAT alias should return value > 1.0 for extreme outlier");
+            assert!(
+                *g > 1.0,
+                "GRUBBS_STAT alias should return value > 1.0 for extreme outlier"
+            );
         }
         other => panic!("expected Float, got {:?}", other),
     }
@@ -432,7 +516,10 @@ fn test_modified_z_score_basic() {
             assert_eq!(arr.len(), 4);
             let last_score = as_f64(&arr[3]).abs();
             let first_score = as_f64(&arr[0]).abs();
-            assert!(last_score > first_score, "outlier (100) should have higher modified z-score than normal values");
+            assert!(
+                last_score > first_score,
+                "outlier (100) should have higher modified z-score than normal values"
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -447,7 +534,11 @@ fn test_mad_z_score_alias() {
         Some(Value::Array(arr)) => {
             assert_eq!(arr.len(), 5);
             let last_score = as_f64(&arr[4]).abs();
-            assert!(last_score > 5.0, "MAD_Z_SCORE of 500 in [5,6,7,8,500] should be large, got {}", last_score);
+            assert!(
+                last_score > 5.0,
+                "MAD_Z_SCORE of 500 in [5,6,7,8,500] should be large, got {}",
+                last_score
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -464,7 +555,13 @@ fn test_peak_detection_basic() {
     match r.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
             assert_eq!(arr.len(), 2, "should find 2 peaks, got {:?}", arr);
-            let indices: Vec<i64> = arr.iter().map(|v| match v { Value::Integer(i) => *i, _ => -1 }).collect();
+            let indices: Vec<i64> = arr
+                .iter()
+                .map(|v| match v {
+                    Value::Integer(i) => *i,
+                    _ => -1,
+                })
+                .collect();
             assert!(indices.contains(&1), "peak at index 1 not found");
             assert!(indices.contains(&3), "peak at index 3 not found");
         }
@@ -497,7 +594,13 @@ fn test_valley_detection_basic() {
     match r.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
             assert_eq!(arr.len(), 2, "should find 2 valleys, got {:?}", arr);
-            let indices: Vec<i64> = arr.iter().map(|v| match v { Value::Integer(i) => *i, _ => -1 }).collect();
+            let indices: Vec<i64> = arr
+                .iter()
+                .map(|v| match v {
+                    Value::Integer(i) => *i,
+                    _ => -1,
+                })
+                .collect();
             assert!(indices.contains(&1), "valley at index 1 not found");
             assert!(indices.contains(&3), "valley at index 3 not found");
         }
@@ -529,7 +632,11 @@ fn test_autocorrelation_lag_basic() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Float(f)) => {
-            assert!(*f > 0.5, "ACF at lag=2 for [1,2,1,2,1] should be > 0.5, got {}", f);
+            assert!(
+                *f > 0.5,
+                "ACF at lag=2 for [1,2,1,2,1] should be > 0.5, got {}",
+                f
+            );
         }
         other => panic!("expected Float, got {:?}", other),
     }
@@ -542,7 +649,11 @@ fn test_acf_lag_alias() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Float(f)) => {
-            assert!(*f > 0.5, "ACF_LAG alias at lag=2 for alternating series should be high, got {}", f);
+            assert!(
+                *f > 0.5,
+                "ACF_LAG alias at lag=2 for alternating series should be high, got {}",
+                f
+            );
         }
         other => panic!("expected Float, got {:?}", other),
     }
@@ -551,12 +662,19 @@ fn test_acf_lag_alias() {
 #[test]
 fn test_autocorrelation_lag_zero() {
     // ACF at lag=0 should be 1.0
-    let (_dir, _db, ex) = setup("ts_acf3", serde_json::json!({"nums": [3, 1, 4, 1, 5, 9, 2, 6]}));
+    let (_dir, _db, ex) = setup(
+        "ts_acf3",
+        serde_json::json!({"nums": [3, 1, 4, 1, 5, 9, 2, 6]}),
+    );
     let mut p = Parser::new("QUERY ts_acf3 COMPUTE res = AUTOCORRELATION_LAG(nums, 0) SELECT res;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Float(f)) => {
-            assert!((*f - 1.0).abs() < 1e-9, "ACF at lag=0 should be 1.0, got {}", f);
+            assert!(
+                (*f - 1.0).abs() < 1e-9,
+                "ACF at lag=0 should be 1.0, got {}",
+                f
+            );
         }
         other => panic!("expected Float, got {:?}", other),
     }
@@ -568,12 +686,17 @@ fn test_autocorrelation_lag_zero() {
 fn test_exponential_smoothing_constant_series() {
     // Smoothing a constant series should return the constant
     let (_dir, _db, ex) = setup("ts_ec", serde_json::json!({"nums": [7.0, 7.0, 7.0, 7.0]}));
-    let mut p = Parser::new("QUERY ts_ec COMPUTE res = EXPONENTIAL_SMOOTHING(nums, 0.8) SELECT res;");
+    let mut p =
+        Parser::new("QUERY ts_ec COMPUTE res = EXPONENTIAL_SMOOTHING(nums, 0.8) SELECT res;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
             for v in arr {
-                assert!((as_f64(v) - 7.0).abs() < 1e-9, "smoothing constant 7.0 should give 7.0, got {}", as_f64(v));
+                assert!(
+                    (as_f64(v) - 7.0).abs() < 1e-9,
+                    "smoothing constant 7.0 should give 7.0, got {}",
+                    as_f64(v)
+                );
             }
         }
         other => panic!("expected Array, got {:?}", other),
@@ -592,7 +715,10 @@ fn test_bollinger_bands_constant_series() {
             let upper = as_f64(obj.get("upper").unwrap());
             let middle = as_f64(obj.get("middle").unwrap());
             let lower = as_f64(obj.get("lower").unwrap());
-            assert!((upper - 5.0).abs() < 1e-9, "upper should be 5.0 for constant series");
+            assert!(
+                (upper - 5.0).abs() < 1e-9,
+                "upper should be 5.0 for constant series"
+            );
             assert!((middle - 5.0).abs() < 1e-9, "middle should be 5.0");
             assert!((lower - 5.0).abs() < 1e-9, "lower should be 5.0");
         }
@@ -607,7 +733,11 @@ fn test_linear_forecast_zero_steps() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
-            assert_eq!(arr.len(), 0, "LINEAR_FORECAST with 0 steps should return empty array");
+            assert_eq!(
+                arr.len(),
+                0,
+                "LINEAR_FORECAST with 0 steps should return empty array"
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -622,7 +752,11 @@ fn test_z_score_anomaly_no_outliers() {
     match r.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
             for v in arr {
-                assert_eq!(*v, Value::Bool(false), "uniform series should have no Z-score anomalies");
+                assert_eq!(
+                    *v,
+                    Value::Bool(false),
+                    "uniform series should have no Z-score anomalies"
+                );
             }
         }
         other => panic!("expected Array, got {:?}", other),

@@ -121,7 +121,10 @@ pub(crate) fn execute_compute(
         {
             // Extract function name and args from the inner func expression
             let (func_name, func_args) = match *func {
-                Expression::FunctionCall { name: fn_name, args: fn_args } => (fn_name, fn_args),
+                Expression::FunctionCall {
+                    name: fn_name,
+                    args: fn_args,
+                } => (fn_name, fn_args),
                 Expression::FieldAccess(parts) => {
                     (parts.last().cloned().unwrap_or_default(), vec![])
                 }
@@ -639,15 +642,22 @@ fn apply_window_function_compute(
                 } else {
                     3
                 };
-                let vals: Vec<f64> = indices.iter().map(|&orig_idx| {
-                    if let Some(e) = expr {
-                        match expressions::evaluate_expression(executor, e, &rows[orig_idx]).unwrap_or(Value::Null) {
-                            Value::Integer(i) => i as f64,
-                            Value::Float(f) => f,
-                            _ => 0.0,
+                let vals: Vec<f64> = indices
+                    .iter()
+                    .map(|&orig_idx| {
+                        if let Some(e) = expr {
+                            match expressions::evaluate_expression(executor, e, &rows[orig_idx])
+                                .unwrap_or(Value::Null)
+                            {
+                                Value::Integer(i) => i as f64,
+                                Value::Float(f) => f,
+                                _ => 0.0,
+                            }
+                        } else {
+                            0.0
                         }
-                    } else { 0.0 }
-                }).collect();
+                    })
+                    .collect();
                 for (pos, &orig_idx) in indices.iter().enumerate() {
                     let start = pos.saturating_sub(window - 1);
                     let slice = &vals[start..=pos];
@@ -666,15 +676,22 @@ fn apply_window_function_compute(
                 } else {
                     3
                 };
-                let vals: Vec<f64> = indices.iter().map(|&orig_idx| {
-                    if let Some(e) = expr {
-                        match expressions::evaluate_expression(executor, e, &rows[orig_idx]).unwrap_or(Value::Null) {
-                            Value::Integer(i) => i as f64,
-                            Value::Float(f) => f,
-                            _ => 0.0,
+                let vals: Vec<f64> = indices
+                    .iter()
+                    .map(|&orig_idx| {
+                        if let Some(e) = expr {
+                            match expressions::evaluate_expression(executor, e, &rows[orig_idx])
+                                .unwrap_or(Value::Null)
+                            {
+                                Value::Integer(i) => i as f64,
+                                Value::Float(f) => f,
+                                _ => 0.0,
+                            }
+                        } else {
+                            0.0
                         }
-                    } else { 0.0 }
-                }).collect();
+                    })
+                    .collect();
                 for (pos, &orig_idx) in indices.iter().enumerate() {
                     let start = pos.saturating_sub(window - 1);
                     let sum: f64 = vals[start..=pos].iter().sum();
@@ -917,7 +934,10 @@ pub(crate) fn execute_pivot(
             let values = bucket.get(pv).cloned().unwrap_or_default();
             data.insert(pv.clone(), apply_pivot_aggregate(&agg_upper, values));
         }
-        out.push(Row { id: Uuid::new_v4(), data });
+        out.push(Row {
+            id: Uuid::new_v4(),
+            data,
+        });
     }
     Ok(out)
 }

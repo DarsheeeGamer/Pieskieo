@@ -623,6 +623,583 @@ struct VectorOutput {
     meta: Option<HashMap<String, String>>,
 }
 
+fn extract_insert_id(stmt: &sqlparser::ast::Statement) -> Result<Option<Uuid>, ApiError> {
+    let sqlparser::ast::Statement::Insert {
+        columns, source, ..
+    } = stmt
+    else {
+        return Ok(None);
+    };
+
+    let columns: Vec<String> = columns.iter().map(|c| c.value.clone()).collect();
+    let query = source
+        .as_ref()
+        .ok_or_else(|| ApiError::BadRequest("INSERT source required".into()))?;
+    let values = match query.body.as_ref() {
+        sqlparser::ast::SetExpr::Values(v) => &v.rows,
+        _ => {
+            return Err(ApiError::BadRequest(
+                "only VALUES inserts are supported in /v1/sql".into(),
+            ))
+        }
+    };
+
+    if values.len() != 1 {
+        return Err(ApiError::BadRequest(
+            "multi-row INSERT is not supported in /v1/sql".into(),
+        ));
+    }
+
+    for (idx, column) in columns.iter().enumerate() {
+        if column != "id" && column != "_id" {
+            continue;
+        }
+        let Some(expr) = values[0].get(idx) else {
+            continue;
+        };
+        let sqlparser::ast::Expr::Value(sqlparser::ast::Value::SingleQuotedString(raw)) = expr
+        else {
+            return Err(ApiError::BadRequest(
+                "sharded /v1/sql INSERT requires id/_id to be a quoted UUID literal".into(),
+            ));
+        };
+        let id = Uuid::parse_str(raw)
+            .map_err(|_| ApiError::BadRequest("INSERT id/_id must be a valid UUID".into()))?;
+        return Ok(Some(id));
+    }
+
+    Ok(None)
+}
+
+fn strip_select_limit_offset(stmt: &sqlparser::ast::Statement) -> Result<Option<String>, ApiError> {
+    let sqlparser::ast::Statement::Query(query) = stmt else {
+        return Ok(None);
+    };
+    let mut stmt = stmt.clone();
+    let sqlparser::ast::Statement::Query(query) = &mut stmt else {
+        unreachable!();
+    };
+    query.limit = None;
+    query.offset = None;
+    Ok(Some(stmt.to_string()))
+}
+
+fn json_cmp(a: &serde_json::Value, b: &serde_json::Value) -> Option<std::cmp::Ordering> {
+    match (a, b) {
+        (serde_json::Value::Number(x), serde_json::Value::Number(y)) => {
+            let xf = x.as_f64()?;
+            let yf = y.as_f64()?;
+            xf.partial_cmp(&yf)
+        }
+        (serde_json::Value::String(x), serde_json::Value::String(y)) => Some(x.cmp(y)),
+        (serde_json::Value::Bool(x), serde_json::Value::Bool(y)) => Some(x.cmp(y)),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Copy)]
+enum AggregateKind {
+    Count,
+    Sum,
+    Avg,
+    Min,
+    Max,
+}
+
+#[derive(Clone)]
+struct GroupField {
+    source: String,
+    alias: String,
+}
+
+#[derive(Clone)]
+struct AggregateSpec {
+    alias: String,
+    kind: AggregateKind,
+    field: Option<String>,
+}
+
+#[derive(Clone)]
+struct AggregatePlan {
+    group_fields: Vec<GroupField>,
+    specs: Vec<AggregateSpec>,
+    having: Option<sqlparser::ast::Expr>,
+}
+
+fn parse_simple_aggregate_plan(
+    stmt: &sqlparser::ast::Statement,
+) -> Result<Option<AggregatePlan>, ApiError> {
+    let sqlparser::ast::Statement::Query(query) = stmt else {
+        return Ok(None);
+    };
+    let sqlparser::ast::SetExpr::Select(select) = query.body.as_ref() else {
+        return Ok(None);
+    };
+
+    let group_sources = match &select.group_by {
+        sqlparser::ast::GroupByExpr::All(_) => {
+            return Err(ApiError::BadRequest(
+                "GROUP BY ALL is not supported on /v1/sql".into(),
+            ))
+        }
+        sqlparser::ast::GroupByExpr::Expressions(exprs) => {
+            let mut out = std::collections::HashSet::new();
+            for expr in exprs {
+                let sqlparser::ast::Expr::Identifier(id) = expr else {
+                    return Err(ApiError::BadRequest(
+                        "cross-shard GROUP BY supports only identifiers".into(),
+                    ));
+                };
+                out.insert(id.value.clone());
+            }
+            out
+        }
+    };
+
+    let mut group_fields = Vec::new();
+    let mut specs = Vec::new();
+    for item in &select.projection {
+        match item {
+            sqlparser::ast::SelectItem::UnnamedExpr(sqlparser::ast::Expr::Identifier(id)) => {
+                if !group_sources.contains(&id.value) {
+                    return Ok(None);
+                }
+                group_fields.push(GroupField {
+                    source: id.value.clone(),
+                    alias: id.value.clone(),
+                });
+            }
+            sqlparser::ast::SelectItem::ExprWithAlias {
+                expr: sqlparser::ast::Expr::Identifier(id),
+                alias,
+            } => {
+                if !group_sources.contains(&id.value) {
+                    return Ok(None);
+                }
+                group_fields.push(GroupField {
+                    source: id.value.clone(),
+                    alias: alias.value.clone(),
+                });
+            }
+            sqlparser::ast::SelectItem::UnnamedExpr(sqlparser::ast::Expr::Function(f)) => {
+                specs.push(parse_aggregate_spec(f, None)?);
+            }
+            sqlparser::ast::SelectItem::ExprWithAlias {
+                expr: sqlparser::ast::Expr::Function(f),
+                alias,
+            } => {
+                specs.push(parse_aggregate_spec(f, Some(alias.value.as_str()))?);
+            }
+            _ => return Ok(None),
+        }
+    }
+    if specs.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(AggregatePlan {
+        group_fields,
+        specs,
+        having: select.having.clone(),
+    }))
+}
+
+fn parse_aggregate_spec(
+    func: &sqlparser::ast::Function,
+    alias: Option<&str>,
+) -> Result<AggregateSpec, ApiError> {
+    let name = func.name.to_string().to_lowercase();
+    let kind = match name.as_str() {
+        "count" => AggregateKind::Count,
+        "sum" => AggregateKind::Sum,
+        "avg" => AggregateKind::Avg,
+        "min" => AggregateKind::Min,
+        "max" => AggregateKind::Max,
+        _ => {
+            return Err(ApiError::BadRequest(format!(
+                "cross-shard aggregate {} is not yet supported on /v1/sql",
+                name
+            )))
+        }
+    };
+
+    let mut field = None;
+    if let Some(arg) = func.args.first() {
+        match arg {
+            sqlparser::ast::FunctionArg::Unnamed(sqlparser::ast::FunctionArgExpr::Wildcard) => {
+                if !matches!(kind, AggregateKind::Count) {
+                    return Err(ApiError::BadRequest(
+                        "only COUNT supports wildcard arguments on /v1/sql".into(),
+                    ));
+                }
+            }
+            sqlparser::ast::FunctionArg::Unnamed(sqlparser::ast::FunctionArgExpr::Expr(
+                sqlparser::ast::Expr::Identifier(id),
+            )) => {
+                field = Some(id.value.clone());
+            }
+            _ => {
+                return Err(ApiError::BadRequest(
+                    "cross-shard aggregate arguments must be identifiers or *".into(),
+                ))
+            }
+        }
+    }
+
+    if !matches!(kind, AggregateKind::Count) && field.is_none() {
+        return Err(ApiError::BadRequest(
+            "SUM/AVG/MIN/MAX require an identifier argument on /v1/sql".into(),
+        ));
+    }
+
+    Ok(AggregateSpec {
+        alias: alias.unwrap_or(&name).to_string(),
+        kind,
+        field,
+    })
+}
+
+fn build_raw_aggregate_fanout_sql(
+    stmt: &sqlparser::ast::Statement,
+    plan: &AggregatePlan,
+) -> Result<Option<String>, ApiError> {
+    let sqlparser::ast::Statement::Query(_) = stmt else {
+        return Ok(None);
+    };
+    let mut stmt = stmt.clone();
+    let sqlparser::ast::Statement::Query(query) = &mut stmt else {
+        unreachable!();
+    };
+    let sqlparser::ast::SetExpr::Select(select) = query.body.as_mut() else {
+        return Err(ApiError::BadRequest(
+            "only simple SELECT queries can be merged across shards".into(),
+        ));
+    };
+
+    let mut seen = std::collections::HashSet::new();
+    let mut projection = Vec::new();
+    for field in &plan.group_fields {
+        if !seen.insert(field.source.clone()) {
+            continue;
+        }
+        projection.push(sqlparser::ast::SelectItem::ExprWithAlias {
+            expr: sqlparser::ast::Expr::Identifier(sqlparser::ast::Ident::new(
+                field.source.clone(),
+            )),
+            alias: sqlparser::ast::Ident::new(field.source.clone()),
+        });
+    }
+    for spec in &plan.specs {
+        let source = spec.field.clone().unwrap_or_else(|| "_id".to_string());
+        if !seen.insert(source.clone()) {
+            continue;
+        }
+        projection.push(sqlparser::ast::SelectItem::ExprWithAlias {
+            expr: sqlparser::ast::Expr::Identifier(sqlparser::ast::Ident::new(source.clone())),
+            alias: sqlparser::ast::Ident::new(source),
+        });
+    }
+    if projection.is_empty() {
+        projection.push(sqlparser::ast::SelectItem::ExprWithAlias {
+            expr: sqlparser::ast::Expr::Identifier(sqlparser::ast::Ident::new("_id")),
+            alias: sqlparser::ast::Ident::new("_id"),
+        });
+    }
+    select.projection = projection;
+    query.order_by.clear();
+    query.limit = None;
+    query.offset = None;
+    Ok(Some(stmt.to_string()))
+}
+
+fn compute_simple_aggregate_rows(
+    rows: Vec<(Uuid, serde_json::Value)>,
+    specs: &[AggregateSpec],
+) -> Result<Vec<(Uuid, serde_json::Value)>, ApiError> {
+    let mut merged = serde_json::Map::new();
+    for spec in specs {
+        match spec.kind {
+            AggregateKind::Count => {
+                let count = if let Some(field) = &spec.field {
+                    rows.iter()
+                        .filter(|(_, row)| row.get(field).is_some_and(|value| !value.is_null()))
+                        .count() as u64
+                } else {
+                    rows.len() as u64
+                };
+                merged.insert(spec.alias.clone(), serde_json::json!(count));
+            }
+            AggregateKind::Sum => {
+                let field = spec.field.as_ref().expect("sum field");
+                let mut total = 0.0_f64;
+                let mut saw = false;
+                for (_, row) in &rows {
+                    let Some(value) = row.get(field) else {
+                        continue;
+                    };
+                    if value.is_null() {
+                        continue;
+                    }
+                    let num = value.as_f64().ok_or_else(|| {
+                        ApiError::Internal(anyhow::anyhow!("invalid SUM input for field {}", field))
+                    })?;
+                    total += num;
+                    saw = true;
+                }
+                merged.insert(
+                    spec.alias.clone(),
+                    if saw {
+                        serde_json::json!(total)
+                    } else {
+                        serde_json::Value::Null
+                    },
+                );
+            }
+            AggregateKind::Avg => {
+                let field = spec.field.as_ref().expect("avg field");
+                let mut total = 0.0_f64;
+                let mut count = 0usize;
+                for (_, row) in &rows {
+                    let Some(value) = row.get(field) else {
+                        continue;
+                    };
+                    if value.is_null() {
+                        continue;
+                    }
+                    let num = value.as_f64().ok_or_else(|| {
+                        ApiError::Internal(anyhow::anyhow!("invalid AVG input for field {}", field))
+                    })?;
+                    total += num;
+                    count += 1;
+                }
+                merged.insert(
+                    spec.alias.clone(),
+                    if count == 0 {
+                        serde_json::Value::Null
+                    } else {
+                        serde_json::json!(total / count as f64)
+                    },
+                );
+            }
+            AggregateKind::Min | AggregateKind::Max => {
+                let field = spec.field.as_ref().expect("min/max field");
+                let mut best: Option<serde_json::Value> = None;
+                for (_, row) in &rows {
+                    let Some(value) = row.get(field) else {
+                        continue;
+                    };
+                    if value.is_null() {
+                        continue;
+                    }
+                    best = match best {
+                        None => Some(value.clone()),
+                        Some(current) => {
+                            let ord = json_cmp(&current, value).ok_or_else(|| {
+                                ApiError::Internal(anyhow::anyhow!(
+                                    "invalid aggregate ordering for field {}",
+                                    field
+                                ))
+                            })?;
+                            let take_new = matches!(spec.kind, AggregateKind::Min) && ord.is_gt()
+                                || matches!(spec.kind, AggregateKind::Max) && ord.is_lt();
+                            if take_new {
+                                Some(value.clone())
+                            } else {
+                                Some(current)
+                            }
+                        }
+                    };
+                }
+                merged.insert(spec.alias.clone(), best.unwrap_or(serde_json::Value::Null));
+            }
+        }
+    }
+    Ok(vec![(Uuid::nil(), serde_json::Value::Object(merged))])
+}
+
+fn sql_value_to_json(value: &sqlparser::ast::Value) -> Option<serde_json::Value> {
+    match value {
+        sqlparser::ast::Value::Number(n, _) => {
+            if let Ok(i) = n.parse::<i64>() {
+                Some(serde_json::json!(i))
+            } else if let Ok(f) = n.parse::<f64>() {
+                Some(serde_json::json!(f))
+            } else {
+                None
+            }
+        }
+        sqlparser::ast::Value::SingleQuotedString(s) => Some(serde_json::Value::String(s.clone())),
+        sqlparser::ast::Value::Boolean(b) => Some(serde_json::Value::Bool(*b)),
+        sqlparser::ast::Value::Null => Some(serde_json::Value::Null),
+        _ => None,
+    }
+}
+
+fn eval_having_operand(
+    row: &serde_json::Value,
+    expr: &sqlparser::ast::Expr,
+) -> Result<serde_json::Value, ApiError> {
+    match expr {
+        sqlparser::ast::Expr::Identifier(id) => Ok(row
+            .get(&id.value)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null)),
+        sqlparser::ast::Expr::Value(v) => sql_value_to_json(v).ok_or_else(|| {
+            ApiError::BadRequest("HAVING literal is not supported on /v1/sql".into())
+        }),
+        sqlparser::ast::Expr::Nested(inner) => eval_having_operand(row, inner),
+        _ => Err(ApiError::BadRequest(
+            "HAVING supports only identifiers and literals on /v1/sql".into(),
+        )),
+    }
+}
+
+fn eval_having_expr(
+    row: &serde_json::Value,
+    expr: &sqlparser::ast::Expr,
+) -> Result<bool, ApiError> {
+    match expr {
+        sqlparser::ast::Expr::BinaryOp { left, op, right } => match op {
+            sqlparser::ast::BinaryOperator::And => {
+                Ok(eval_having_expr(row, left)? && eval_having_expr(row, right)?)
+            }
+            sqlparser::ast::BinaryOperator::Or => {
+                Ok(eval_having_expr(row, left)? || eval_having_expr(row, right)?)
+            }
+            sqlparser::ast::BinaryOperator::Eq
+            | sqlparser::ast::BinaryOperator::NotEq
+            | sqlparser::ast::BinaryOperator::Gt
+            | sqlparser::ast::BinaryOperator::Lt
+            | sqlparser::ast::BinaryOperator::GtEq
+            | sqlparser::ast::BinaryOperator::LtEq => {
+                let left = eval_having_operand(row, left)?;
+                let right = eval_having_operand(row, right)?;
+                let ord = json_cmp(&left, &right);
+                Ok(match op {
+                    sqlparser::ast::BinaryOperator::Eq => left == right,
+                    sqlparser::ast::BinaryOperator::NotEq => left != right,
+                    sqlparser::ast::BinaryOperator::Gt => ord.map(|o| o.is_gt()).unwrap_or(false),
+                    sqlparser::ast::BinaryOperator::Lt => ord.map(|o| o.is_lt()).unwrap_or(false),
+                    sqlparser::ast::BinaryOperator::GtEq => ord.map(|o| o.is_ge()).unwrap_or(false),
+                    sqlparser::ast::BinaryOperator::LtEq => ord.map(|o| o.is_le()).unwrap_or(false),
+                    _ => unreachable!(),
+                })
+            }
+            _ => Err(ApiError::BadRequest(
+                "HAVING operator is not supported on /v1/sql".into(),
+            )),
+        },
+        sqlparser::ast::Expr::Nested(inner) => eval_having_expr(row, inner),
+        _ => Err(ApiError::BadRequest(
+            "HAVING must be a boolean expression on /v1/sql".into(),
+        )),
+    }
+}
+
+fn compute_grouped_aggregate_rows(
+    rows: Vec<(Uuid, serde_json::Value)>,
+    plan: &AggregatePlan,
+) -> Result<Vec<(Uuid, serde_json::Value)>, ApiError> {
+    if plan.group_fields.is_empty() {
+        let out = compute_simple_aggregate_rows(rows, &plan.specs)?;
+        if let Some(expr) = &plan.having {
+            let mut filtered = Vec::new();
+            for row in out {
+                if eval_having_expr(&row.1, expr)? {
+                    filtered.push(row);
+                }
+            }
+            return Ok(filtered);
+        }
+        return Ok(out);
+    }
+
+    let mut groups: std::collections::HashMap<
+        String,
+        (
+            serde_json::Map<String, serde_json::Value>,
+            Vec<(Uuid, serde_json::Value)>,
+        ),
+    > = std::collections::HashMap::new();
+
+    for row in rows {
+        let mut group_values = serde_json::Map::new();
+        if let Some(obj) = row.1.as_object() {
+            for field in &plan.group_fields {
+                group_values.insert(
+                    field.alias.clone(),
+                    obj.get(&field.source)
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null),
+                );
+            }
+        }
+        let key = serde_json::to_string(&group_values)
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
+        groups
+            .entry(key)
+            .or_insert_with(|| (group_values, Vec::new()))
+            .1
+            .push(row);
+    }
+
+    let mut out = Vec::with_capacity(groups.len());
+    for (_key, (group_values, bucket_rows)) in groups {
+        let mut agg_row = compute_simple_aggregate_rows(bucket_rows, &plan.specs)?
+            .into_iter()
+            .next()
+            .map(|(_, value)| value)
+            .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
+        if let Some(obj) = agg_row.as_object_mut() {
+            for (key, value) in group_values {
+                obj.insert(key, value);
+            }
+        }
+        let keep = match &plan.having {
+            Some(expr) => eval_having_expr(&agg_row, expr)?,
+            None => true,
+        };
+        if keep {
+            out.push((Uuid::nil(), agg_row));
+        }
+    }
+    Ok(out)
+}
+
+fn sort_select_rows(
+    rows: &mut [(Uuid, serde_json::Value)],
+    query: &sqlparser::ast::Query,
+) -> Result<(), ApiError> {
+    let mut order_fields = Vec::new();
+    for ob in &query.order_by {
+        let sqlparser::ast::Expr::Identifier(id) = &ob.expr else {
+            return Err(ApiError::BadRequest(
+                "cross-shard ORDER BY supports only identifiers".into(),
+            ));
+        };
+        order_fields.push((id.value.clone(), ob.asc.unwrap_or(true)));
+    }
+    if order_fields.is_empty() {
+        return Ok(());
+    }
+    rows.sort_by(|a, b| {
+        for (field, asc) in &order_fields {
+            let av = a.1.get(field);
+            let bv = b.1.get(field);
+            let ord = match (av, bv) {
+                (Some(x), Some(y)) => json_cmp(x, y).unwrap_or(std::cmp::Ordering::Equal),
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (None, Some(_)) => std::cmp::Ordering::Less,
+                (None, None) => std::cmp::Ordering::Equal,
+            };
+            if ord != std::cmp::Ordering::Equal {
+                return if *asc { ord } else { ord.reverse() };
+            }
+        }
+        std::cmp::Ordering::Equal
+    });
+    Ok(())
+}
+
 struct DbPool {
     shards: Vec<Arc<PieskieoDb>>,
     template: PieskieoVectorParams,
@@ -886,10 +1463,10 @@ pub async fn serve() -> anyhow::Result<()> {
 
     tracing::info!(%addr, "listening (plaintext)");
     let listener = TcpListener::bind(addr).await?;
-    
+
     // Graceful shutdown handler
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-    
+
     // Spawn signal handler
     tokio::spawn(async move {
         let ctrl_c = async {
@@ -897,7 +1474,7 @@ pub async fn serve() -> anyhow::Result<()> {
                 .await
                 .expect("failed to install Ctrl+C handler");
         };
-        
+
         #[cfg(unix)]
         let terminate = async {
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
@@ -905,10 +1482,10 @@ pub async fn serve() -> anyhow::Result<()> {
                 .recv()
                 .await;
         };
-        
+
         #[cfg(not(unix))]
         let terminate = std::future::pending::<()>();
-        
+
         tokio::select! {
             _ = ctrl_c => {
                 tracing::info!("received Ctrl+C, initiating shutdown");
@@ -917,10 +1494,10 @@ pub async fn serve() -> anyhow::Result<()> {
                 tracing::info!("received SIGTERM, initiating shutdown");
             },
         }
-        
+
         let _ = shutdown_tx.send(());
     });
-    
+
     // Start server with graceful shutdown
     axum::serve(
         listener,
@@ -931,7 +1508,7 @@ pub async fn serve() -> anyhow::Result<()> {
         tracing::info!("shutting down gracefully...");
     })
     .await?;
-    
+
     Ok(())
 }
 
@@ -1050,7 +1627,7 @@ async fn health(State(state): State<AppState>) -> Result<Json<HealthStatus>, Api
     let guard = state.pool.read().await;
     let m = guard.aggregate_metrics();
     let auth_guard = state.auth.read().await;
-    
+
     Ok(Json(HealthStatus {
         status: "healthy".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -1170,9 +1747,14 @@ async fn query_docs(
                 input.namespace.as_deref(),
                 input.collection.as_deref(),
                 &input.filter,
-                input.limit.unwrap_or(100),
-                input.offset.unwrap_or(0),
+                usize::MAX,
+                0,
             ));
+        }
+        let offset = input.offset.unwrap_or(0);
+        hits = hits.into_iter().skip(offset).collect();
+        if let Some(limit) = input.limit {
+            hits.truncate(limit);
         }
     }
     Ok(Json(ApiResponse {
@@ -1198,11 +1780,43 @@ async fn query_sql(
     let first = &ast[0];
     let is_select = matches!(first, sqlparser::ast::Statement::Query(_));
     if is_select {
+        let aggregate_plan = parse_simple_aggregate_plan(first)?;
+        let fanout_sql = if let Some(plan) = aggregate_plan.as_ref() {
+            build_raw_aggregate_fanout_sql(first, plan)?.unwrap_or_else(|| input.sql.clone())
+        } else {
+            strip_select_limit_offset(first)?.unwrap_or_else(|| input.sql.clone())
+        };
         let mut rows = Vec::new();
         for shard in state.pool.read().await.each() {
-            match shard.query_sql(&input.sql)? {
+            match shard.query_sql(&fanout_sql)? {
                 SqlResult::Select(mut r) => rows.append(&mut r),
                 _ => {}
+            }
+        }
+        if let Some(plan) = aggregate_plan.as_ref() {
+            rows = compute_grouped_aggregate_rows(rows, plan)?;
+        }
+        if let sqlparser::ast::Statement::Query(query) = first {
+            sort_select_rows(&mut rows, query)?;
+            let offset = query
+                .offset
+                .as_ref()
+                .and_then(|o| match &o.value {
+                    sqlparser::ast::Expr::Value(sqlparser::ast::Value::Number(n, _)) => {
+                        n.parse::<usize>().ok()
+                    }
+                    _ => None,
+                })
+                .unwrap_or(0);
+            rows = rows.into_iter().skip(offset).collect();
+            let query_limit = query.limit.as_ref().and_then(|l| match l {
+                sqlparser::ast::Expr::Value(sqlparser::ast::Value::Number(n, _)) => {
+                    n.parse::<usize>().ok()
+                }
+                _ => None,
+            });
+            if let Some(limit) = query_limit {
+                rows.truncate(limit);
             }
         }
         if let Some(limit) = input.limit {
@@ -1233,8 +1847,12 @@ async fn query_sql(
             }))
         }
         sqlparser::ast::Statement::Insert { .. } => {
-            // choose shard 0 for now
-            let shard = state.pool.read().await.shards[0].clone();
+            let Some(id) = extract_insert_id(first)? else {
+                return Err(ApiError::BadRequest(
+                    "sharded /v1/sql INSERT requires an explicit UUID in id or _id".into(),
+                ));
+            };
+            let shard = state.pool.read().await.shard_for(&id);
             match shard.query_sql(&input.sql)? {
                 SqlResult::Insert { ids } => Ok(Json(ApiResponse {
                     ok: true,
@@ -1306,9 +1924,14 @@ async fn query_rows(
                 input.namespace.as_deref(),
                 input.table.as_deref(),
                 &input.filter,
-                input.limit.unwrap_or(100),
-                input.offset.unwrap_or(0),
+                usize::MAX,
+                0,
             ));
+        }
+        let offset = input.offset.unwrap_or(0);
+        hits = hits.into_iter().skip(offset).collect();
+        if let Some(limit) = input.limit {
+            hits.truncate(limit);
         }
     }
     Ok(Json(ApiResponse {
@@ -2198,4 +2821,207 @@ async fn create_user(
         ok: true,
         data: "created",
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlparser::{dialect::GenericDialect, parser::Parser};
+
+    #[test]
+    fn extract_insert_id_reads_explicit_uuid() {
+        let sql = "INSERT INTO docs.default.users (_id, name) VALUES ('550e8400-e29b-41d4-a716-446655440000', 'alice')";
+        let dialect = GenericDialect {};
+        let ast = Parser::parse_sql(&dialect, sql).expect("sql parses");
+        let id = extract_insert_id(&ast[0]).expect("id extraction succeeds");
+        assert_eq!(
+            id,
+            Some(Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").expect("uuid parses"),)
+        );
+    }
+
+    #[test]
+    fn extract_insert_id_returns_none_without_id_column() {
+        let sql = "INSERT INTO docs.default.users (name) VALUES ('alice')";
+        let dialect = GenericDialect {};
+        let ast = Parser::parse_sql(&dialect, sql).expect("sql parses");
+        let id = extract_insert_id(&ast[0]).expect("id extraction succeeds");
+        assert_eq!(id, None);
+    }
+
+    #[test]
+    fn strip_select_limit_offset_removes_query_bounds() {
+        let sql = "SELECT name FROM docs.default.users ORDER BY age DESC LIMIT 2 OFFSET 1";
+        let dialect = GenericDialect {};
+        let ast = Parser::parse_sql(&dialect, sql).expect("sql parses");
+        let rewritten = strip_select_limit_offset(&ast[0])
+            .expect("rewrite succeeds")
+            .expect("query rewrite exists");
+        assert!(!rewritten.to_uppercase().contains(" LIMIT "));
+        assert!(!rewritten.to_uppercase().contains(" OFFSET "));
+        assert!(rewritten.to_uppercase().contains("ORDER BY"));
+    }
+
+    #[test]
+    fn sort_select_rows_applies_global_order() {
+        let sql = "SELECT name, age FROM docs.default.users ORDER BY age DESC";
+        let dialect = GenericDialect {};
+        let ast = Parser::parse_sql(&dialect, sql).expect("sql parses");
+        let sqlparser::ast::Statement::Query(query) = &ast[0] else {
+            panic!("expected query");
+        };
+        let mut rows = vec![
+            (Uuid::nil(), serde_json::json!({"name": "alice", "age": 20})),
+            (Uuid::nil(), serde_json::json!({"name": "bob", "age": 30})),
+        ];
+        sort_select_rows(&mut rows, query).expect("sort succeeds");
+        assert_eq!(rows[0].1["name"], "bob");
+    }
+
+    #[test]
+    fn compute_grouped_aggregate_rows_merges_count_sum_avg_min_max() {
+        let specs = vec![
+            AggregateSpec {
+                alias: "c".to_string(),
+                kind: AggregateKind::Count,
+                field: None,
+            },
+            AggregateSpec {
+                alias: "s".to_string(),
+                kind: AggregateKind::Sum,
+                field: Some("score".to_string()),
+            },
+            AggregateSpec {
+                alias: "a".to_string(),
+                kind: AggregateKind::Avg,
+                field: Some("score".to_string()),
+            },
+            AggregateSpec {
+                alias: "lo".to_string(),
+                kind: AggregateKind::Min,
+                field: Some("score".to_string()),
+            },
+            AggregateSpec {
+                alias: "hi".to_string(),
+                kind: AggregateKind::Max,
+                field: Some("score".to_string()),
+            },
+        ];
+        let rows = vec![
+            (Uuid::nil(), serde_json::json!({"score": 5.0})),
+            (Uuid::nil(), serde_json::json!({"score": 7.5})),
+            (Uuid::nil(), serde_json::json!({"score": 12.5})),
+        ];
+        let plan = AggregatePlan {
+            group_fields: Vec::new(),
+            specs,
+            having: None,
+        };
+        let merged = compute_grouped_aggregate_rows(rows, &plan).expect("merge succeeds");
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].1["c"], 3);
+        assert_eq!(merged[0].1["s"], 25.0);
+        assert_eq!(merged[0].1["a"], 25.0 / 3.0);
+        assert_eq!(merged[0].1["lo"], 5.0);
+        assert_eq!(merged[0].1["hi"], 12.5);
+    }
+
+    #[test]
+    fn build_raw_aggregate_fanout_sql_rewrites_avg_query() {
+        let sql = "SELECT COUNT(*), AVG(age) AS avg_age, MAX(age) AS max_age FROM docs.default.users WHERE age > 10";
+        let dialect = GenericDialect {};
+        let ast = Parser::parse_sql(&dialect, sql).expect("sql parses");
+        let plan = parse_simple_aggregate_plan(&ast[0])
+            .expect("aggregate parsing succeeds")
+            .expect("aggregate plan exists");
+        let rewritten = build_raw_aggregate_fanout_sql(&ast[0], &plan)
+            .expect("rewrite succeeds")
+            .expect("query rewrite exists");
+        let upper = rewritten.to_uppercase();
+        assert!(upper.contains("SELECT _ID AS _ID, AGE AS AGE"));
+        assert!(!upper.contains("COUNT("));
+        assert!(!upper.contains("AVG("));
+        assert!(!upper.contains("MAX("));
+        assert!(upper.contains("WHERE AGE > 10"));
+    }
+
+    #[test]
+    fn compute_grouped_aggregate_rows_groups_by_identifier_fields() {
+        let plan = AggregatePlan {
+            group_fields: vec![GroupField {
+                source: "team".to_string(),
+                alias: "team".to_string(),
+            }],
+            specs: vec![
+                AggregateSpec {
+                    alias: "c".to_string(),
+                    kind: AggregateKind::Count,
+                    field: None,
+                },
+                AggregateSpec {
+                    alias: "avg_score".to_string(),
+                    kind: AggregateKind::Avg,
+                    field: Some("score".to_string()),
+                },
+            ],
+            having: None,
+        };
+        let rows = vec![
+            (
+                Uuid::nil(),
+                serde_json::json!({"team": "red", "score": 10.0}),
+            ),
+            (
+                Uuid::nil(),
+                serde_json::json!({"team": "red", "score": 20.0}),
+            ),
+            (
+                Uuid::nil(),
+                serde_json::json!({"team": "blue", "score": 9.0}),
+            ),
+        ];
+        let mut merged = compute_grouped_aggregate_rows(rows, &plan).expect("group merge succeeds");
+        merged.sort_by(|a, b| a.1["team"].as_str().cmp(&b.1["team"].as_str()));
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].1["team"], "blue");
+        assert_eq!(merged[0].1["c"], 1);
+        assert_eq!(merged[0].1["avg_score"], 9.0);
+        assert_eq!(merged[1].1["team"], "red");
+        assert_eq!(merged[1].1["c"], 2);
+        assert_eq!(merged[1].1["avg_score"], 15.0);
+    }
+
+    #[test]
+    fn compute_grouped_aggregate_rows_applies_having_filter() {
+        let plan = AggregatePlan {
+            group_fields: vec![GroupField {
+                source: "team".to_string(),
+                alias: "team".to_string(),
+            }],
+            specs: vec![AggregateSpec {
+                alias: "c".to_string(),
+                kind: AggregateKind::Count,
+                field: None,
+            }],
+            having: Some(sqlparser::ast::Expr::BinaryOp {
+                left: Box::new(sqlparser::ast::Expr::Identifier(
+                    sqlparser::ast::Ident::new("c"),
+                )),
+                op: sqlparser::ast::BinaryOperator::Gt,
+                right: Box::new(sqlparser::ast::Expr::Value(sqlparser::ast::Value::Number(
+                    "1".to_string(),
+                    false,
+                ))),
+            }),
+        };
+        let rows = vec![
+            (Uuid::nil(), serde_json::json!({"team": "red"})),
+            (Uuid::nil(), serde_json::json!({"team": "red"})),
+            (Uuid::nil(), serde_json::json!({"team": "blue"})),
+        ];
+        let merged = compute_grouped_aggregate_rows(rows, &plan).expect("having merge succeeds");
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].1["team"], "red");
+        assert_eq!(merged[0].1["c"], 2);
+    }
 }

@@ -12,7 +12,9 @@ use uuid::Uuid;
 
 fn exec(ex: &Executor, pql: &str) -> pieskieo_core::error::Result<pieskieo_core::pql::QueryResult> {
     let mut p = Parser::new(pql);
-    let stmt = p.parse().unwrap_or_else(|e| panic!("parse error for {:?}: {:?}", pql, e));
+    let stmt = p
+        .parse()
+        .unwrap_or_else(|e| panic!("parse error for {:?}: {:?}", pql, e));
     ex.execute(stmt)
 }
 
@@ -66,7 +68,11 @@ fn test_upsert_do_nothing_inserts_when_no_conflict() {
 
     let result = exec(&ex, r#"QUERY fruits WHERE name = "mango" SELECT stock;"#).unwrap();
 
-    assert_eq!(result.rows.len(), 1, "New row should be inserted when there is no conflict");
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "New row should be inserted when there is no conflict"
+    );
     assert_eq!(
         result.rows[0].data.get("stock"),
         Some(&Value::Integer(20)),
@@ -92,11 +98,7 @@ fn test_upsert_do_update_overwrites_field() {
     )
     .unwrap();
 
-    let result = exec(
-        &ex,
-        r#"QUERY users WHERE name = "alice" SELECT score;"#,
-    )
-    .unwrap();
+    let result = exec(&ex, r#"QUERY users WHERE name = "alice" SELECT score;"#).unwrap();
 
     assert_eq!(result.rows.len(), 1, "Should still have exactly one alice");
     assert_eq!(
@@ -221,7 +223,11 @@ fn test_merge_when_matched_update() {
 
     // The matched update ran without error; verify the row still exists
     let result = exec(&ex, r#"QUERY stock WHERE sku = "A1" SELECT sku;"#).unwrap();
-    assert_eq!(result.rows.len(), 1, "stock row for A1 should still exist after MERGE");
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "stock row for A1 should still exist after MERGE"
+    );
 }
 
 // ── MERGE WHEN NOT MATCHED THEN INSERT ───────────────────────────────────────
@@ -266,7 +272,11 @@ fn test_merge_when_not_matched_insert() {
 
     // Verify inserted rows are queryable
     let check = exec(&ex, r#"QUERY tgt_nodes SELECT node_id;"#).unwrap();
-    assert_eq!(check.rows.len(), 2, "Both source rows should have been inserted into tgt_nodes");
+    assert_eq!(
+        check.rows.len(),
+        2,
+        "Both source rows should have been inserted into tgt_nodes"
+    );
 }
 
 // ── MERGE: both WHEN MATCHED and WHEN NOT MATCHED ────────────────────────────
@@ -317,11 +327,7 @@ fn test_merge_matched_update_and_not_matched_insert() {
     );
 
     // Verify apple's price was updated
-    let apple_result = exec(
-        &ex,
-        r#"QUERY inventory WHERE name = "apple" SELECT price;"#,
-    )
-    .unwrap();
+    let apple_result = exec(&ex, r#"QUERY inventory WHERE name = "apple" SELECT price;"#).unwrap();
     assert_eq!(apple_result.rows.len(), 1);
     let apple_price = match apple_result.rows[0].data.get("price") {
         Some(Value::Integer(n)) => *n,
@@ -336,7 +342,11 @@ fn test_merge_matched_update_and_not_matched_insert() {
         r#"QUERY inventory WHERE name = "banana" SELECT price;"#,
     )
     .unwrap();
-    assert_eq!(banana_result.rows.len(), 1, "Banana should have been inserted by MERGE");
+    assert_eq!(
+        banana_result.rows.len(),
+        1,
+        "Banana should have been inserted by MERGE"
+    );
 }
 
 // ── MERGE: WHEN MATCHED THEN DELETE ─────────────────────────────────────────
@@ -380,19 +390,15 @@ fn test_merge_when_matched_delete() {
     .unwrap();
 
     // E1 should be gone
-    let result_e1 = exec(
-        &ex,
-        r#"QUERY employees WHERE emp_id = "E1" SELECT emp_id;"#,
-    )
-    .unwrap();
-    assert_eq!(result_e1.rows.len(), 0, "E1 should have been deleted by MERGE");
+    let result_e1 = exec(&ex, r#"QUERY employees WHERE emp_id = "E1" SELECT emp_id;"#).unwrap();
+    assert_eq!(
+        result_e1.rows.len(),
+        0,
+        "E1 should have been deleted by MERGE"
+    );
 
     // E2 should still exist
-    let result_e2 = exec(
-        &ex,
-        r#"QUERY employees WHERE emp_id = "E2" SELECT emp_id;"#,
-    )
-    .unwrap();
+    let result_e2 = exec(&ex, r#"QUERY employees WHERE emp_id = "E2" SELECT emp_id;"#).unwrap();
     assert_eq!(result_e2.rows.len(), 1, "E2 should NOT have been deleted");
 }
 
@@ -405,9 +411,21 @@ fn test_update_with_compound_condition() {
     let ex = Executor::new(db.clone());
 
     // Insert several orders
-    exec(&ex, r#"INSERT INTO orders {status: "pending", amount: 50, region: "west"};"#).unwrap();
-    exec(&ex, r#"INSERT INTO orders {status: "pending", amount: 200, region: "west"};"#).unwrap();
-    exec(&ex, r#"INSERT INTO orders {status: "pending", amount: 300, region: "east"};"#).unwrap();
+    exec(
+        &ex,
+        r#"INSERT INTO orders {status: "pending", amount: 50, region: "west"};"#,
+    )
+    .unwrap();
+    exec(
+        &ex,
+        r#"INSERT INTO orders {status: "pending", amount: 200, region: "west"};"#,
+    )
+    .unwrap();
+    exec(
+        &ex,
+        r#"INSERT INTO orders {status: "pending", amount: 300, region: "east"};"#,
+    )
+    .unwrap();
 
     // Update only west+pending orders with amount > 100
     exec(
@@ -445,14 +463,26 @@ fn test_delete_with_filter() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, r#"INSERT INTO sessions {user: "alice", active: true};"#).unwrap();
+    exec(
+        &ex,
+        r#"INSERT INTO sessions {user: "alice", active: true};"#,
+    )
+    .unwrap();
     exec(&ex, r#"INSERT INTO sessions {user: "bob", active: false};"#).unwrap();
-    exec(&ex, r#"INSERT INTO sessions {user: "carol", active: false};"#).unwrap();
+    exec(
+        &ex,
+        r#"INSERT INTO sessions {user: "carol", active: false};"#,
+    )
+    .unwrap();
 
     exec(&ex, r#"DELETE FROM sessions WHERE active = false;"#).unwrap();
 
     let result = exec(&ex, r#"QUERY sessions SELECT user;"#).unwrap();
-    assert_eq!(result.rows.len(), 1, "Only alice's active session should remain");
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "Only alice's active session should remain"
+    );
     assert_eq!(
         result.rows[0].data.get("user"),
         Some(&Value::String("alice".to_string())),
@@ -519,7 +549,11 @@ fn test_delete_returning() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, r#"INSERT INTO events {event_type: "click", user: "alice"};"#).unwrap();
+    exec(
+        &ex,
+        r#"INSERT INTO events {event_type: "click", user: "alice"};"#,
+    )
+    .unwrap();
 
     let result = exec(
         &ex,
@@ -527,7 +561,11 @@ fn test_delete_returning() {
     )
     .unwrap();
 
-    assert_eq!(result.rows.len(), 1, "RETURNING should produce the deleted row");
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "RETURNING should produce the deleted row"
+    );
     assert_eq!(
         result.rows[0].data.get("event_type"),
         Some(&Value::String("click".to_string())),
@@ -564,7 +602,11 @@ fn test_sequential_upserts_last_write_wins() {
     )
     .unwrap();
 
-    assert_eq!(result.rows.len(), 1, "Should have exactly one row for alice");
+    assert_eq!(
+        result.rows.len(),
+        1,
+        "Should have exactly one row for alice"
+    );
     assert_eq!(
         result.rows[0].data.get("score"),
         Some(&Value::Integer(50)),
@@ -581,8 +623,16 @@ fn test_upsert_single_conflict_field_multiple_users() {
     let ex = Executor::new(db.clone());
 
     // Insert two different users
-    exec(&ex, r#"INSERT INTO accounts {username: "alice", balance: 100};"#).unwrap();
-    exec(&ex, r#"INSERT INTO accounts {username: "bob", balance: 200};"#).unwrap();
+    exec(
+        &ex,
+        r#"INSERT INTO accounts {username: "alice", balance: 100};"#,
+    )
+    .unwrap();
+    exec(
+        &ex,
+        r#"INSERT INTO accounts {username: "bob", balance: 200};"#,
+    )
+    .unwrap();
 
     // Upsert only affects alice
     exec(
@@ -617,5 +667,9 @@ fn test_upsert_single_conflict_field_multiple_users() {
 
     // Total row count should still be 2
     let all = exec(&ex, r#"QUERY accounts SELECT username;"#).unwrap();
-    assert_eq!(all.rows.len(), 2, "Should still have exactly two account rows");
+    assert_eq!(
+        all.rows.len(),
+        2,
+        "Should still have exactly two account rows"
+    );
 }

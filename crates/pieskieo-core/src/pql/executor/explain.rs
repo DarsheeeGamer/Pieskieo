@@ -224,10 +224,7 @@ fn describe_operation(op: &Operation) -> (String, f64) {
             format!("UNNEST -> {}", alias.as_deref().unwrap_or("value")),
             2.0,
         ),
-        Operation::Pivot { aggregate, .. } => (
-            format!("PIVOT (aggregate)"),
-            5.0,
-        ),
+        Operation::Pivot { aggregate, .. } => (format!("PIVOT (aggregate)"), 5.0),
         Operation::Qualify { .. } => ("QUALIFY (window filter)".to_string(), 1.0),
         Operation::Sample { count } => (format!("SAMPLE {}", count), 1.0),
     }

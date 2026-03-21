@@ -239,8 +239,7 @@ fn test_array_group_by_basic() {
         }),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE out = ARRAY_GROUP_BY(items, "cat") SELECT out;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE out = ARRAY_GROUP_BY(items, "cat") SELECT out;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(Value::Object(groups)) => {
@@ -266,13 +265,8 @@ fn test_array_group_by_basic() {
 #[test]
 fn test_identity_matrix_3x3() {
     let (db, ex) = setup();
-    db.put_doc_ns(
-        None,
-        Some("t"),
-        Uuid::new_v4(),
-        serde_json::json!({"n": 3}),
-    )
-    .unwrap();
+    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 3}))
+        .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE out = IDENTITY_MATRIX(n) SELECT out;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
@@ -407,14 +401,30 @@ fn test_matrix_multiply_basic() {
         Some(Value::Array(rows)) => {
             assert_eq!(rows.len(), 2);
             if let Value::Array(row0) = &rows[0] {
-                assert!((to_f64(&row0[0]) - 19.0).abs() < 0.001, "expected 19, got {}", to_f64(&row0[0]));
-                assert!((to_f64(&row0[1]) - 22.0).abs() < 0.001, "expected 22, got {}", to_f64(&row0[1]));
+                assert!(
+                    (to_f64(&row0[0]) - 19.0).abs() < 0.001,
+                    "expected 19, got {}",
+                    to_f64(&row0[0])
+                );
+                assert!(
+                    (to_f64(&row0[1]) - 22.0).abs() < 0.001,
+                    "expected 22, got {}",
+                    to_f64(&row0[1])
+                );
             } else {
                 panic!("expected inner array");
             }
             if let Value::Array(row1) = &rows[1] {
-                assert!((to_f64(&row1[0]) - 43.0).abs() < 0.001, "expected 43, got {}", to_f64(&row1[0]));
-                assert!((to_f64(&row1[1]) - 50.0).abs() < 0.001, "expected 50, got {}", to_f64(&row1[1]));
+                assert!(
+                    (to_f64(&row1[0]) - 43.0).abs() < 0.001,
+                    "expected 43, got {}",
+                    to_f64(&row1[0])
+                );
+                assert!(
+                    (to_f64(&row1[1]) - 50.0).abs() < 0.001,
+                    "expected 50, got {}",
+                    to_f64(&row1[1])
+                );
             } else {
                 panic!("expected inner array");
             }
@@ -475,16 +485,24 @@ fn test_array_window_agg_avg() {
         serde_json::json!({"arr": [1, 2, 3, 4, 5]}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE out = ARRAY_WINDOW_AGG(arr, 3, "avg") SELECT out;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE out = ARRAY_WINDOW_AGG(arr, 3, "avg") SELECT out;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(Value::Array(avgs)) => {
             // windows: [1,2,3]=2.0, [2,3,4]=3.0, [3,4,5]=4.0
             assert_eq!(avgs.len(), 3);
-            assert!((to_f64(&avgs[0]) - 2.0).abs() < 0.001, "first window avg should be 2.0");
-            assert!((to_f64(&avgs[1]) - 3.0).abs() < 0.001, "second window avg should be 3.0");
-            assert!((to_f64(&avgs[2]) - 4.0).abs() < 0.001, "third window avg should be 4.0");
+            assert!(
+                (to_f64(&avgs[0]) - 2.0).abs() < 0.001,
+                "first window avg should be 2.0"
+            );
+            assert!(
+                (to_f64(&avgs[1]) - 3.0).abs() < 0.001,
+                "second window avg should be 3.0"
+            );
+            assert!(
+                (to_f64(&avgs[2]) - 4.0).abs() < 0.001,
+                "third window avg should be 4.0"
+            );
         }
         other => panic!("expected array, got {:?}", other),
     }
@@ -500,8 +518,7 @@ fn test_array_window_agg_sum() {
         serde_json::json!({"arr": [10, 20, 30, 40]}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE out = WINDOW_AGG(arr, 2, "sum") SELECT out;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE out = WINDOW_AGG(arr, 2, "sum") SELECT out;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(Value::Array(sums)) => {
@@ -596,10 +613,7 @@ fn test_array_to_object_pairs() {
         Some(Value::Object(obj)) => {
             assert!(obj.contains_key("name"), "should have 'name' key");
             assert!(obj.contains_key("age"), "should have 'age' key");
-            assert_eq!(
-                obj.get("name"),
-                Some(&Value::String("alice".to_string()))
-            );
+            assert_eq!(obj.get("name"), Some(&Value::String("alice".to_string())));
         }
         other => panic!("expected object, got {:?}", other),
     }
@@ -615,8 +629,7 @@ fn test_pairs_to_object_two_arrays() {
         serde_json::json!({"keys": ["x", "y", "z"], "vals": [10, 20, 30]}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE out = PAIRS_TO_OBJECT(keys, vals) SELECT out;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE out = PAIRS_TO_OBJECT(keys, vals) SELECT out;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(Value::Object(obj)) => {
@@ -641,9 +654,8 @@ fn test_transform_values_to_upper() {
         serde_json::json!({"obj": {"greeting": "hello", "name": "world"}}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE out = TRANSFORM_VALUES(obj, "TO_UPPER") SELECT out;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE out = TRANSFORM_VALUES(obj, "TO_UPPER") SELECT out;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(Value::Object(obj)) => {
@@ -667,9 +679,7 @@ fn test_object_transform_abs() {
         serde_json::json!({"obj": {"a": -5, "b": -3}}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE out = OBJECT_TRANSFORM(obj, "ABS") SELECT out;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE out = OBJECT_TRANSFORM(obj, "ABS") SELECT out;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(Value::Object(obj)) => {
@@ -714,13 +724,8 @@ fn test_diagonal_extract() {
 #[test]
 fn test_eye_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(
-        None,
-        Some("t"),
-        Uuid::new_v4(),
-        serde_json::json!({"n": 2}),
-    )
-    .unwrap();
+    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 2}))
+        .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE out = EYE(n) SELECT out;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {

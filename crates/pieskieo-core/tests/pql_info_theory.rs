@@ -21,9 +21,8 @@ fn make_db(ns: &str, doc: serde_json::Value) -> (tempfile::TempDir, Arc<Pieskieo
 fn test_shannon_entropy_uniform() {
     // Uniform distribution over 4 outcomes -> entropy = 2 bits
     let (_dir, _db, ex) = make_db("t", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE h = SHANNON_ENTROPY([0.25, 0.25, 0.25, 0.25]) SELECT h;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE h = SHANNON_ENTROPY([0.25, 0.25, 0.25, 0.25]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
         Some(Value::Float(f)) => assert!(
@@ -39,8 +38,7 @@ fn test_shannon_entropy_uniform() {
 fn test_shannon_entropy_certain() {
     // Deterministic distribution -> entropy = 0
     let (_dir, _db, ex) = make_db("t2", serde_json::json!({"dummy": 1}));
-    let mut p =
-        Parser::new(r#"QUERY t2 COMPUTE h = SHANNON_ENTROPY([1.0, 0.0, 0.0]) SELECT h;"#);
+    let mut p = Parser::new(r#"QUERY t2 COMPUTE h = SHANNON_ENTROPY([1.0, 0.0, 0.0]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
         Some(Value::Float(f)) => assert!(f.abs() < 0.001, "certain entropy should be 0, got {}", f),
@@ -52,9 +50,7 @@ fn test_shannon_entropy_certain() {
 fn test_h_entropy_alias() {
     // H_ENTROPY is alias for SHANNON_ENTROPY
     let (_dir, _db, ex) = make_db("t3", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t3 COMPUTE h = H_ENTROPY([0.5, 0.5]) SELECT h;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t3 COMPUTE h = H_ENTROPY([0.5, 0.5]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
         Some(Value::Float(f)) => assert!(
@@ -70,9 +66,8 @@ fn test_h_entropy_alias() {
 fn test_entropy_from_counts() {
     // ENTROPY_FROM_COUNTS normalizes automatically
     let (_dir, _db, ex) = make_db("t4", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t4 COMPUTE h = ENTROPY_FROM_COUNTS([10, 10, 10, 10]) SELECT h;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t4 COMPUTE h = ENTROPY_FROM_COUNTS([10, 10, 10, 10]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
         Some(Value::Float(f)) => assert!(
@@ -87,9 +82,7 @@ fn test_entropy_from_counts() {
 #[test]
 fn test_entropy_counts_alias() {
     let (_dir, _db, ex) = make_db("t5", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t5 COMPUTE h = ENTROPY_COUNTS([50, 50]) SELECT h;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t5 COMPUTE h = ENTROPY_COUNTS([50, 50]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
         Some(Value::Float(f)) => assert!(
@@ -105,9 +98,7 @@ fn test_entropy_counts_alias() {
 fn test_entropy_nats() {
     // H_NATS for uniform 2-outcome -> ln(2) nats
     let (_dir, _db, ex) = make_db("t6", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t6 COMPUTE h = ENTROPY_NATS([0.5, 0.5]) SELECT h;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t6 COMPUTE h = ENTROPY_NATS([0.5, 0.5]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     let ln2 = 2.0_f64.ln();
     match r.rows[0].data.get("h") {
@@ -123,9 +114,7 @@ fn test_entropy_nats() {
 #[test]
 fn test_h_nats_alias() {
     let (_dir, _db, ex) = make_db("t7", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t7 COMPUTE h = H_NATS([0.25, 0.25, 0.25, 0.25]) SELECT h;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t7 COMPUTE h = H_NATS([0.25, 0.25, 0.25, 0.25]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     let expected = 4.0_f64.ln(); // ln(4) nats for uniform 4-outcome
     match r.rows[0].data.get("h") {
@@ -159,12 +148,14 @@ fn test_normalized_entropy() {
 #[test]
 fn test_h_norm_alias() {
     let (_dir, _db, ex) = make_db("t9", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t9 COMPUTE h = H_NORM([1.0, 0.0]) SELECT h;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t9 COMPUTE h = H_NORM([1.0, 0.0]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
-        Some(Value::Float(f)) => assert!(f.abs() < 0.001, "degenerate norm entropy should be 0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.abs() < 0.001,
+            "degenerate norm entropy should be 0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -192,9 +183,7 @@ fn test_joint_entropy_independent() {
 #[test]
 fn test_h_joint_alias() {
     let (_dir, _db, ex) = make_db("t11", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t11 COMPUTE h = H_JOINT([[0.5, 0.0], [0.0, 0.5]]) SELECT h;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t11 COMPUTE h = H_JOINT([[0.5, 0.0], [0.0, 0.5]]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
         Some(Value::Float(f)) => assert!(
@@ -228,9 +217,8 @@ fn test_conditional_entropy_perfect_dependence() {
 fn test_h_cond_alias() {
     // Independent: H(Y|X) = H(Y) = 1 bit
     let (_dir, _db, ex) = make_db("t13", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t13 COMPUTE h = H_COND([[0.25, 0.25], [0.25, 0.25]]) SELECT h;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t13 COMPUTE h = H_COND([[0.25, 0.25], [0.25, 0.25]]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
         Some(Value::Float(f)) => assert!(
@@ -264,9 +252,8 @@ fn test_mutual_information_independent() {
 fn test_mutual_info_alias_perfect() {
     // Perfect dependence: I(X;Y) = H(X) = 1 bit
     let (_dir, _db, ex) = make_db("t15", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t15 COMPUTE mi = MUTUAL_INFO([[0.5, 0.0], [0.0, 0.5]]) SELECT mi;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t15 COMPUTE mi = MUTUAL_INFO([[0.5, 0.0], [0.0, 0.5]]) SELECT mi;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("mi") {
         Some(Value::Float(f)) => assert!(
@@ -300,9 +287,8 @@ fn test_information_gain_basic() {
 fn test_info_gain_alias_no_gain() {
     // Same distribution in all children -> zero gain
     let (_dir, _db, ex) = make_db("t17", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t17 COMPUTE ig = INFO_GAIN([4, 4], [[2, 2], [2, 2]]) SELECT ig;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t17 COMPUTE ig = INFO_GAIN([4, 4], [[2, 2], [2, 2]]) SELECT ig;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ig") {
         Some(Value::Float(f)) => assert!(
@@ -319,9 +305,8 @@ fn test_info_gain_alias_no_gain() {
 #[test]
 fn test_kl_divergence_identical() {
     let (_dir, _db, ex) = make_db("t18", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t18 COMPUTE d = KL_DIVERGENCE([0.5, 0.5], [0.5, 0.5]) SELECT d;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t18 COMPUTE d = KL_DIVERGENCE([0.5, 0.5], [0.5, 0.5]) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
         Some(Value::Float(f)) => assert!(
@@ -337,9 +322,7 @@ fn test_kl_divergence_identical() {
 fn test_kl_div_alias() {
     // KL([1,0],[0.5,0.5]) should be large (infinite in theory -> 1e18)
     let (_dir, _db, ex) = make_db("t19", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t19 COMPUTE d = KL_DIV([1.0, 0.0], [0.5, 0.5]) SELECT d;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t19 COMPUTE d = KL_DIV([1.0, 0.0], [0.5, 0.5]) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
         Some(Value::Float(f)) => assert!(
@@ -356,9 +339,8 @@ fn test_kl_divergence_known_value() {
     // KL([0.5,0.5]||[0.25,0.75]) = 0.5*log2(0.5/0.25) + 0.5*log2(0.5/0.75)
     // = 0.5*1 + 0.5*log2(2/3) ~ 0.5 - 0.5*0.585 = 0.5 - 0.292 = 0.208
     let (_dir, _db, ex) = make_db("t20", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t20 COMPUTE d = KL_DIVERGENCE([0.5, 0.5], [0.25, 0.75]) SELECT d;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t20 COMPUTE d = KL_DIVERGENCE([0.5, 0.5], [0.25, 0.75]) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
         Some(Value::Float(f)) => assert!(
@@ -375,16 +357,11 @@ fn test_kl_divergence_known_value() {
 #[test]
 fn test_js_divergence_identical() {
     let (_dir, _db, ex) = make_db("t21", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t21 COMPUTE d = JS_DIVERGENCE([0.5, 0.5], [0.5, 0.5]) SELECT d;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t21 COMPUTE d = JS_DIVERGENCE([0.5, 0.5], [0.5, 0.5]) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Float(f)) => assert!(
-            f.abs() < 0.001,
-            "JS of identical should be 0, got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!(f.abs() < 0.001, "JS of identical should be 0, got {}", f),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -393,9 +370,7 @@ fn test_js_divergence_identical() {
 fn test_js_div_alias_max() {
     // JS([1,0],[0,1]) = 1 bit (maximum for JS in bits)
     let (_dir, _db, ex) = make_db("t22", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t22 COMPUTE d = JS_DIV([1.0, 0.0], [0.0, 1.0]) SELECT d;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t22 COMPUTE d = JS_DIV([1.0, 0.0], [0.0, 1.0]) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
         Some(Value::Float(f)) => assert!(
@@ -476,9 +451,7 @@ fn test_tv_dist_identical() {
 fn test_tv_dist_alias_max() {
     // TV([1,0],[0,1]) = 1
     let (_dir, _db, ex) = make_db("t26", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t26 COMPUTE tv = TV_DIST([1.0, 0.0], [0.0, 1.0]) SELECT tv;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t26 COMPUTE tv = TV_DIST([1.0, 0.0], [0.0, 1.0]) SELECT tv;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("tv") {
         Some(Value::Float(f)) => assert!(
@@ -501,7 +474,11 @@ fn test_hellinger_identical() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
         Some(Value::Float(f)) => {
-            assert!(f.abs() < 0.001, "Hellinger of identical should be 0, got {}", f)
+            assert!(
+                f.abs() < 0.001,
+                "Hellinger of identical should be 0, got {}",
+                f
+            )
         }
         other => panic!("expected float, got {:?}", other),
     }
@@ -511,9 +488,7 @@ fn test_hellinger_identical() {
 fn test_hellinger_alias() {
     // HELLINGER([1,0],[0,1]) = 1
     let (_dir, _db, ex) = make_db("t28", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t28 COMPUTE h = HELLINGER([1.0, 0.0], [0.0, 1.0]) SELECT h;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t28 COMPUTE h = HELLINGER([1.0, 0.0], [0.0, 1.0]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
         Some(Value::Float(f)) => assert!(
@@ -572,7 +547,11 @@ fn test_bhattacharyya_distance_zero() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("bd") {
         Some(Value::Float(f)) => {
-            assert!(f.abs() < 0.001, "Bhattacharyya distance for identical should be ~0, got {}", f)
+            assert!(
+                f.abs() < 0.001,
+                "Bhattacharyya distance for identical should be ~0, got {}",
+                f
+            )
         }
         other => panic!("expected float, got {:?}", other),
     }
@@ -581,12 +560,15 @@ fn test_bhattacharyya_distance_zero() {
 #[test]
 fn test_bhatt_dist_alias() {
     let (_dir, _db, ex) = make_db("t32", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t32 COMPUTE bd = BHATT_DIST([0.3, 0.7], [0.6, 0.4]) SELECT bd;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t32 COMPUTE bd = BHATT_DIST([0.3, 0.7], [0.6, 0.4]) SELECT bd;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("bd") {
-        Some(Value::Float(f)) => assert!(*f >= 0.0, "Bhattacharyya distance should be >= 0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f >= 0.0,
+            "Bhattacharyya distance should be >= 0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -597,9 +579,7 @@ fn test_bhatt_dist_alias() {
 fn test_huffman_bound_uniform() {
     // Same as entropy
     let (_dir, _db, ex) = make_db("t33", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t33 COMPUTE hb = HUFFMAN_BOUND([25, 25, 25, 25]) SELECT hb;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t33 COMPUTE hb = HUFFMAN_BOUND([25, 25, 25, 25]) SELECT hb;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("hb") {
         Some(Value::Float(f)) => assert!(
@@ -614,13 +594,15 @@ fn test_huffman_bound_uniform() {
 #[test]
 fn test_huffman_entropy_alias() {
     let (_dir, _db, ex) = make_db("t34", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t34 COMPUTE hb = HUFFMAN_ENTROPY([1, 1]) SELECT hb;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t34 COMPUTE hb = HUFFMAN_ENTROPY([1, 1]) SELECT hb;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("hb") {
         Some(Value::Float(f)) => {
-            assert!((*f - 1.0).abs() < 0.001, "Huffman bound for binary should be 1 bit, got {}", f)
+            assert!(
+                (*f - 1.0).abs() < 0.001,
+                "Huffman bound for binary should be 1 bit, got {}",
+                f
+            )
         }
         other => panic!("expected float, got {:?}", other),
     }
@@ -632,12 +614,14 @@ fn test_huffman_entropy_alias() {
 fn test_lz_complexity_repeated() {
     // Highly repetitive string "aaaaaa" -> low complexity
     let (_dir, _db, ex) = make_db("t35", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t35 COMPUTE c = LEMPEL_ZIV_COMPLEXITY("aaaaaa") SELECT c;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t35 COMPUTE c = LEMPEL_ZIV_COMPLEXITY("aaaaaa") SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
-        Some(Value::Integer(i)) => assert!(*i <= 3, "repeated string should have low LZ complexity, got {}", i),
+        Some(Value::Integer(i)) => assert!(
+            *i <= 3,
+            "repeated string should have low LZ complexity, got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -645,9 +629,7 @@ fn test_lz_complexity_repeated() {
 #[test]
 fn test_lz_complexity_alias() {
     let (_dir, _db, ex) = make_db("t36", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t36 COMPUTE c = LZ_COMPLEXITY("abcdef") SELECT c;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t36 COMPUTE c = LZ_COMPLEXITY("abcdef") SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
         Some(Value::Integer(i)) => assert!(*i > 0, "LZ complexity should be positive, got {}", i),
@@ -661,9 +643,7 @@ fn test_lz_complexity_alias() {
 fn test_kolmogorov_compress_repetitive() {
     // "aaaaaaa" compresses to ratio < 1
     let (_dir, _db, ex) = make_db("t37", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t37 COMPUTE r = KOLMOGOROV_APPROX("aaaaaaaaaa") SELECT r;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t37 COMPUTE r = KOLMOGOROV_APPROX("aaaaaaaaaa") SELECT r;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("r") {
         Some(Value::Float(f)) => assert!(
@@ -678,12 +658,12 @@ fn test_kolmogorov_compress_repetitive() {
 #[test]
 fn test_kolmogorov_compress_alias() {
     let (_dir, _db, ex) = make_db("t38", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t38 COMPUTE r = KOLMOGOROV_COMPRESS("abcde") SELECT r;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t38 COMPUTE r = KOLMOGOROV_COMPRESS("abcde") SELECT r;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("r") {
-        Some(Value::Float(f)) => assert!(*f > 0.0, "compression ratio should be positive, got {}", f),
+        Some(Value::Float(f)) => {
+            assert!(*f > 0.0, "compression ratio should be positive, got {}", f)
+        }
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -694,12 +674,13 @@ fn test_kolmogorov_compress_alias() {
 fn test_redundancy_uniform_is_zero() {
     // Uniform -> max entropy -> 0 redundancy
     let (_dir, _db, ex) = make_db("t39", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t39 COMPUTE r = REDUNDANCY([0.25, 0.25, 0.25, 0.25]) SELECT r;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t39 COMPUTE r = REDUNDANCY([0.25, 0.25, 0.25, 0.25]) SELECT r;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("r") {
-        Some(Value::Float(f)) => assert!(f.abs() < 0.001, "uniform redundancy should be 0, got {}", f),
+        Some(Value::Float(f)) => {
+            assert!(f.abs() < 0.001, "uniform redundancy should be 0, got {}", f)
+        }
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -708,9 +689,8 @@ fn test_redundancy_uniform_is_zero() {
 fn test_info_redundancy_alias_degenerate() {
     // Degenerate distribution -> 1.0 redundancy
     let (_dir, _db, ex) = make_db("t40", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t40 COMPUTE r = INFO_REDUNDANCY([1.0, 0.0, 0.0, 0.0]) SELECT r;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t40 COMPUTE r = INFO_REDUNDANCY([1.0, 0.0, 0.0, 0.0]) SELECT r;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("r") {
         Some(Value::Float(f)) => assert!(
@@ -728,12 +708,14 @@ fn test_info_redundancy_alias_degenerate() {
 fn test_bsc_capacity_fair() {
     // p=0.5 -> completely noisy channel -> capacity = 0
     let (_dir, _db, ex) = make_db("t41", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t41 COMPUTE c = BSC_CAPACITY(0.5) SELECT c;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t41 COMPUTE c = BSC_CAPACITY(0.5) SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
-        Some(Value::Float(f)) => assert!(f.abs() < 0.001, "BSC capacity at p=0.5 should be 0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.abs() < 0.001,
+            "BSC capacity at p=0.5 should be 0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -742,9 +724,7 @@ fn test_bsc_capacity_fair() {
 fn test_capacity_binary_channel_perfect() {
     // p=0 -> perfect channel -> capacity = 1 bit
     let (_dir, _db, ex) = make_db("t42", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t42 COMPUTE c = CAPACITY_BINARY_CHANNEL(0.0) SELECT c;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t42 COMPUTE c = CAPACITY_BINARY_CHANNEL(0.0) SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
         Some(Value::Float(f)) => assert!(
@@ -772,7 +752,11 @@ fn test_awgn_capacity() {
         Some(Value::Float(f)) => *f,
         other => panic!("expected float for c3, got {:?}", other),
     };
-    assert!(c0.abs() < 0.001, "AWGN capacity at SNR=0 should be 0, got {}", c0);
+    assert!(
+        c0.abs() < 0.001,
+        "AWGN capacity at SNR=0 should be 0, got {}",
+        c0
+    );
     assert!(
         (c3 - 2.0).abs() < 0.001,
         "AWGN capacity at SNR=3 should be 2 bits, got {}",
@@ -783,12 +767,14 @@ fn test_awgn_capacity() {
 #[test]
 fn test_channel_capacity_awgn_alias() {
     let (_dir, _db, ex) = make_db("t44", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t44 COMPUTE c = CHANNEL_CAPACITY_AWGN(15) SELECT c;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t44 COMPUTE c = CHANNEL_CAPACITY_AWGN(15) SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
-        Some(Value::Float(f)) => assert!(*f > 3.9 && *f < 4.1, "AWGN at SNR=15 should be ~4 bits, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f > 3.9 && *f < 4.1,
+            "AWGN at SNR=15 should be ~4 bits, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -799,9 +785,7 @@ fn test_channel_capacity_awgn_alias() {
 fn test_gini_impurity_uniform() {
     // Uniform 2-class -> G = 0.5
     let (_dir, _db, ex) = make_db("t45", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t45 COMPUTE g = GINI_IMPURITY([0.5, 0.5]) SELECT g;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t45 COMPUTE g = GINI_IMPURITY([0.5, 0.5]) SELECT g;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("g") {
         Some(Value::Float(f)) => assert!(
@@ -817,9 +801,7 @@ fn test_gini_impurity_uniform() {
 fn test_gini_alias_pure() {
     // Pure class -> G = 0
     let (_dir, _db, ex) = make_db("t46", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t46 COMPUTE g = GINI([1.0, 0.0]) SELECT g;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t46 COMPUTE g = GINI([1.0, 0.0]) SELECT g;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("g") {
         Some(Value::Float(f)) => assert!(f.abs() < 0.001, "pure Gini should be 0, got {}", f),
@@ -830,9 +812,7 @@ fn test_gini_alias_pure() {
 #[test]
 fn test_gini_from_counts() {
     let (_dir, _db, ex) = make_db("t47", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t47 COMPUTE g = GINI_FROM_COUNTS([10, 10]) SELECT g;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t47 COMPUTE g = GINI_FROM_COUNTS([10, 10]) SELECT g;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("g") {
         Some(Value::Float(f)) => assert!(
@@ -847,12 +827,12 @@ fn test_gini_from_counts() {
 #[test]
 fn test_gini_counts_alias() {
     let (_dir, _db, ex) = make_db("t48", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t48 COMPUTE g = GINI_COUNTS([100, 0]) SELECT g;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t48 COMPUTE g = GINI_COUNTS([100, 0]) SELECT g;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("g") {
-        Some(Value::Float(f)) => assert!(f.abs() < 0.001, "pure GINI_COUNTS should be 0, got {}", f),
+        Some(Value::Float(f)) => {
+            assert!(f.abs() < 0.001, "pure GINI_COUNTS should be 0, got {}", f)
+        }
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -863,9 +843,8 @@ fn test_gini_counts_alias() {
 fn test_weighted_gini_pure_children() {
     // Pure children -> weighted Gini = 0
     let (_dir, _db, ex) = make_db("t49", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t49 COMPUTE wg = WEIGHTED_GINI([[10, 0], [0, 10]]) SELECT wg;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t49 COMPUTE wg = WEIGHTED_GINI([[10, 0], [0, 10]]) SELECT wg;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("wg") {
         Some(Value::Float(f)) => assert!(
@@ -880,9 +859,7 @@ fn test_weighted_gini_pure_children() {
 #[test]
 fn test_split_gini_alias() {
     let (_dir, _db, ex) = make_db("t50", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t50 COMPUTE wg = SPLIT_GINI([[5, 5], [5, 5]]) SELECT wg;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t50 COMPUTE wg = SPLIT_GINI([[5, 5], [5, 5]]) SELECT wg;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("wg") {
         Some(Value::Float(f)) => assert!(
@@ -900,9 +877,8 @@ fn test_split_gini_alias() {
 fn test_gain_ratio_perfect_split() {
     // Perfect split: gain = 1 bit, split_info = 1 bit -> gain_ratio = 1.0
     let (_dir, _db, ex) = make_db("t51", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t51 COMPUTE gr = GAIN_RATIO([5, 5], [[5, 0], [0, 5]]) SELECT gr;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t51 COMPUTE gr = GAIN_RATIO([5, 5], [[5, 0], [0, 5]]) SELECT gr;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("gr") {
         Some(Value::Float(f)) => assert!(
@@ -922,7 +898,11 @@ fn test_information_gain_ratio_alias() {
     );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("gr") {
-        Some(Value::Float(f)) => assert!(f.abs() < 0.001, "gain ratio with no gain should be 0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.abs() < 0.001,
+            "gain ratio with no gain should be 0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -938,7 +918,11 @@ fn test_variance_reduction_no_split() {
     );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("vr") {
-        Some(Value::Float(f)) => assert!(f.abs() < 0.001, "variance reduction with single group should be 0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.abs() < 0.001,
+            "variance reduction with single group should be 0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -967,12 +951,12 @@ fn test_var_reduction_alias_perfect() {
 fn test_hamming_bit_zero() {
     // Same number -> distance = 0
     let (_dir, _db, ex) = make_db("t55", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t55 COMPUTE d = HAMMING_DISTANCE_BINARY(12, 12) SELECT d;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t55 COMPUTE d = HAMMING_DISTANCE_BINARY(12, 12) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 0, "Hamming distance of same numbers should be 0"),
+        Some(Value::Integer(i)) => {
+            assert_eq!(*i, 0, "Hamming distance of same numbers should be 0")
+        }
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -981,12 +965,12 @@ fn test_hamming_bit_zero() {
 fn test_hamming_bit_alias() {
     // 0b0000 vs 0b1111 -> distance = 4
     let (_dir, _db, ex) = make_db("t56", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t56 COMPUTE d = HAMMING_BIT(0, 15) SELECT d;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t56 COMPUTE d = HAMMING_BIT(0, 15) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 4, "Hamming distance of 0 and 15 should be 4, got {}", i),
+        Some(Value::Integer(i)) => {
+            assert_eq!(*i, 4, "Hamming distance of 0 and 15 should be 4, got {}", i)
+        }
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -995,9 +979,7 @@ fn test_hamming_bit_alias() {
 fn test_parity_bit_even() {
     // 6 = 0b110 -> 2 ones -> even parity = 0
     let (_dir, _db, ex) = make_db("t57", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t57 COMPUTE p = PARITY_BIT(6) SELECT p;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t57 COMPUTE p = PARITY_BIT(6) SELECT p;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("p") {
         Some(Value::Integer(i)) => assert_eq!(*i, 0, "parity of 6 (0b110) should be 0, got {}", i),
@@ -1009,9 +991,7 @@ fn test_parity_bit_even() {
 fn test_even_parity_alias() {
     // 7 = 0b111 -> 3 ones -> odd -> even parity = 1
     let (_dir, _db, ex) = make_db("t58", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t58 COMPUTE p = EVEN_PARITY(7) SELECT p;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t58 COMPUTE p = EVEN_PARITY(7) SELECT p;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("p") {
         Some(Value::Integer(i)) => assert_eq!(*i, 1, "parity of 7 (0b111) should be 1, got {}", i),
@@ -1023,12 +1003,16 @@ fn test_even_parity_alias() {
 fn test_hamming_encode_length() {
     // Hamming(7,4): 4 bits -> 7-bit codeword
     let (_dir, _db, ex) = make_db("t59", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t59 COMPUTE cw = HAMMING_CODE_ENCODE([1, 0, 1, 1]) SELECT cw;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t59 COMPUTE cw = HAMMING_CODE_ENCODE([1, 0, 1, 1]) SELECT cw;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cw") {
-        Some(Value::Array(a)) => assert_eq!(a.len(), 7, "Hamming(7,4) should produce 7 bits, got {}", a.len()),
+        Some(Value::Array(a)) => assert_eq!(
+            a.len(),
+            7,
+            "Hamming(7,4) should produce 7 bits, got {}",
+            a.len()
+        ),
         other => panic!("expected array, got {:?}", other),
     }
 }
@@ -1036,9 +1020,7 @@ fn test_hamming_encode_length() {
 #[test]
 fn test_hamming_encode_alias() {
     let (_dir, _db, ex) = make_db("t60", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t60 COMPUTE cw = HAMMING_ENCODE([0, 0, 0, 0]) SELECT cw;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t60 COMPUTE cw = HAMMING_ENCODE([0, 0, 0, 0]) SELECT cw;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cw") {
         Some(Value::Array(a)) => {
@@ -1046,7 +1028,9 @@ fn test_hamming_encode_alias() {
             // all-zero data -> all-zero codeword
             for bit in a {
                 match bit {
-                    Value::Integer(i) => assert_eq!(*i, 0, "all-zero data should encode to all-zero codeword"),
+                    Value::Integer(i) => {
+                        assert_eq!(*i, 0, "all-zero data should encode to all-zero codeword")
+                    }
                     _ => panic!("expected integer bit"),
                 }
             }
@@ -1073,9 +1057,8 @@ fn test_hamming_detect_valid() {
 fn test_hamming_detect_alias() {
     // Known valid Hamming(7,4) codeword for data [1,0,1,1]
     let (_dir, _db, ex) = make_db("t62", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t62 COMPUTE ok = HAMMING_DETECT([0, 0, 0, 0, 0, 0, 0]) SELECT ok;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t62 COMPUTE ok = HAMMING_DETECT([0, 0, 0, 0, 0, 0, 0]) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ok") {
         Some(Value::Bool(b)) => assert!(*b, "all-zero codeword should be valid"),
@@ -1089,13 +1072,17 @@ fn test_hamming_detect_alias() {
 fn test_rep_encode_basic() {
     // [1, 0] with n=3 -> [1, 1, 1, 0, 0, 0]
     let (_dir, _db, ex) = make_db("t63", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t63 COMPUTE enc = REPETITION_CODE_ENCODE([1, 0], 3) SELECT enc;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t63 COMPUTE enc = REPETITION_CODE_ENCODE([1, 0], 3) SELECT enc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("enc") {
         Some(Value::Array(a)) => {
-            assert_eq!(a.len(), 6, "REP(3) of 2 bits should give 6 bits, got {}", a.len());
+            assert_eq!(
+                a.len(),
+                6,
+                "REP(3) of 2 bits should give 6 bits, got {}",
+                a.len()
+            );
         }
         other => panic!("expected array, got {:?}", other),
     }
@@ -1104,13 +1091,16 @@ fn test_rep_encode_basic() {
 #[test]
 fn test_rep_encode_alias() {
     let (_dir, _db, ex) = make_db("t64", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t64 COMPUTE enc = REP_ENCODE([1], 5) SELECT enc;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t64 COMPUTE enc = REP_ENCODE([1], 5) SELECT enc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("enc") {
         Some(Value::Array(a)) => {
-            assert_eq!(a.len(), 5, "REP(5) of 1 bit should give 5 bits, got {}", a.len());
+            assert_eq!(
+                a.len(),
+                5,
+                "REP(5) of 1 bit should give 5 bits, got {}",
+                a.len()
+            );
         }
         other => panic!("expected array, got {:?}", other),
     }
@@ -1120,15 +1110,16 @@ fn test_rep_encode_alias() {
 fn test_rep_decode_majority() {
     // [1, 1, 0] -> majority 1
     let (_dir, _db, ex) = make_db("t65", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t65 COMPUTE dec = REPETITION_CODE_DECODE([1, 1, 0], 3) SELECT dec;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t65 COMPUTE dec = REPETITION_CODE_DECODE([1, 1, 0], 3) SELECT dec;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("dec") {
         Some(Value::Array(a)) => {
             assert_eq!(a.len(), 1, "decode of 3-bit group should give 1 bit");
             match &a[0] {
-                Value::Integer(i) => assert_eq!(*i, 1, "majority of [1,1,0] should be 1, got {}", i),
+                Value::Integer(i) => {
+                    assert_eq!(*i, 1, "majority of [1,1,0] should be 1, got {}", i)
+                }
                 _ => panic!("expected integer"),
             }
         }
@@ -1139,9 +1130,8 @@ fn test_rep_decode_majority() {
 #[test]
 fn test_rep_decode_alias() {
     let (_dir, _db, ex) = make_db("t66", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t66 COMPUTE dec = REP_DECODE([0, 0, 1, 1, 1, 0], 3) SELECT dec;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t66 COMPUTE dec = REP_DECODE([0, 0, 1, 1, 1, 0], 3) SELECT dec;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("dec") {
         Some(Value::Array(a)) => {
@@ -1165,12 +1155,14 @@ fn test_rep_decode_alias() {
 fn test_entropy_single_element() {
     // Single element -> entropy = 0
     let (_dir, _db, ex) = make_db("t67", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t67 COMPUTE h = SHANNON_ENTROPY([1.0]) SELECT h;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t67 COMPUTE h = SHANNON_ENTROPY([1.0]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
-        Some(Value::Float(f)) => assert!(f.abs() < 0.001, "single element entropy should be 0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.abs() < 0.001,
+            "single element entropy should be 0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -1211,9 +1203,7 @@ fn test_hellinger_bounded() {
 fn test_gini_three_class_uniform() {
     // Uniform 3-class -> G = 1 - 3*(1/3)^2 = 1 - 1/3 = 2/3
     let (_dir, _db, ex) = make_db("t70", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t70 COMPUTE g = GINI_IMPURITY([1.0, 1.0, 1.0]) SELECT g;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t70 COMPUTE g = GINI_IMPURITY([1.0, 1.0, 1.0]) SELECT g;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     let expected = 2.0 / 3.0;
     match r.rows[0].data.get("g") {
@@ -1230,9 +1220,7 @@ fn test_gini_three_class_uniform() {
 fn test_bsc_capacity_range() {
     // BSC capacity always in [0, 1]
     let (_dir, _db, ex) = make_db("t71", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t71 COMPUTE c = BSC_CAPACITY(0.1) SELECT c;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t71 COMPUTE c = BSC_CAPACITY(0.1) SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
         Some(Value::Float(f)) => assert!(
@@ -1248,9 +1236,8 @@ fn test_bsc_capacity_range() {
 fn test_entropy_8bit_max() {
     // Uniform 8-outcome -> 3 bits
     let (_dir, _db, ex) = make_db("t72", serde_json::json!({"dummy": 1}));
-    let mut p = Parser::new(
-        r#"QUERY t72 COMPUTE h = SHANNON_ENTROPY([1, 1, 1, 1, 1, 1, 1, 1]) SELECT h;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t72 COMPUTE h = SHANNON_ENTROPY([1, 1, 1, 1, 1, 1, 1, 1]) SELECT h;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("h") {
         Some(Value::Float(f)) => assert!(

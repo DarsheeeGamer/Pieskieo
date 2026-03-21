@@ -1,5 +1,8 @@
 /// Integration tests for PQL bitwise and bit-manipulation functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -15,7 +18,13 @@ fn setup() -> (Arc<PieskieoDb>, Executor) {
 #[test]
 fn test_bit_and_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 12, "bv": 10})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 12, "bv": 10}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_AND(av, bv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(8)));
@@ -25,7 +34,13 @@ fn test_bit_and_basic() {
 #[test]
 fn test_bitwise_and_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 12, "bv": 10})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 12, "bv": 10}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BITWISE_AND(av, bv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(8)));
@@ -35,7 +50,13 @@ fn test_bitwise_and_alias() {
 #[test]
 fn test_bit_or_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 12, "bv": 10})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 12, "bv": 10}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_OR(av, bv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(14)));
@@ -45,7 +66,13 @@ fn test_bit_or_basic() {
 #[test]
 fn test_bitwise_or_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 12, "bv": 10})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 12, "bv": 10}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BITWISE_OR(av, bv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(14)));
@@ -55,7 +82,13 @@ fn test_bitwise_or_alias() {
 #[test]
 fn test_bit_xor_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 12, "bv": 10})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 12, "bv": 10}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_XOR(av, bv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(6)));
@@ -65,7 +98,13 @@ fn test_bit_xor_basic() {
 #[test]
 fn test_bitwise_xor_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 12, "bv": 10})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 12, "bv": 10}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BITWISE_XOR(av, bv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(6)));
@@ -75,7 +114,13 @@ fn test_bitwise_xor_alias() {
 #[test]
 fn test_bit_not_zero() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 0})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 0}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_NOT(av) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(-1)));
@@ -85,7 +130,13 @@ fn test_bit_not_zero() {
 #[test]
 fn test_bitwise_not_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 0})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 0}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BITWISE_NOT(av) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(-1)));
@@ -95,7 +146,13 @@ fn test_bitwise_not_alias() {
 #[test]
 fn test_bit_shift_left_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 1, "nv": 3})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 1, "nv": 3}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_SHIFT_LEFT(av, nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(8)));
@@ -105,7 +162,13 @@ fn test_bit_shift_left_basic() {
 #[test]
 fn test_shl_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 1, "nv": 3})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 1, "nv": 3}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = SHL(av, nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(8)));
@@ -115,7 +178,13 @@ fn test_shl_alias() {
 #[test]
 fn test_bit_shift_right_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 16, "nv": 2})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 16, "nv": 2}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_SHIFT_RIGHT(av, nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(4)));
@@ -125,7 +194,13 @@ fn test_bit_shift_right_basic() {
 #[test]
 fn test_shr_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": 16, "nv": 2})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": 16, "nv": 2}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = SHR(av, nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(4)));
@@ -135,7 +210,13 @@ fn test_shr_alias() {
 #[test]
 fn test_popcount_seven() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 7})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 7}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = POPCOUNT(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(3)));
@@ -145,7 +226,13 @@ fn test_popcount_seven() {
 #[test]
 fn test_bit_count_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 7})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 7}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_COUNT(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(3)));
@@ -155,7 +242,13 @@ fn test_bit_count_alias() {
 #[test]
 fn test_popcount_255() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 255})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 255}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = POPCOUNT(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(8)));
@@ -165,7 +258,13 @@ fn test_popcount_255() {
 #[test]
 fn test_leading_zeros_one() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = LEADING_ZEROS(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(63)));
@@ -175,7 +274,13 @@ fn test_leading_zeros_one() {
 #[test]
 fn test_clz_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = CLZ(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(63)));
@@ -185,7 +290,13 @@ fn test_clz_alias() {
 #[test]
 fn test_trailing_zeros_eight() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 8})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 8}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = TRAILING_ZEROS(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(3)));
@@ -195,7 +306,13 @@ fn test_trailing_zeros_eight() {
 #[test]
 fn test_ctz_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 8})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 8}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = CTZ(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(3)));
@@ -205,7 +322,13 @@ fn test_ctz_alias() {
 #[test]
 fn test_bit_length_one() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_LENGTH(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(1)));
@@ -215,7 +338,13 @@ fn test_bit_length_one() {
 #[test]
 fn test_bit_length_255() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 255})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 255}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_LENGTH(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(8)));
@@ -225,7 +354,13 @@ fn test_bit_length_255() {
 #[test]
 fn test_highest_bit_pos_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 255})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 255}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = HIGHEST_BIT_POS(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(8)));
@@ -235,7 +370,13 @@ fn test_highest_bit_pos_alias() {
 #[test]
 fn test_get_bit_set() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 8, "pos": 3})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 8, "pos": 3}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = GET_BIT(nv, pos) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(1)));
@@ -245,7 +386,13 @@ fn test_get_bit_set() {
 #[test]
 fn test_get_bit_clear() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 8, "pos": 0})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 8, "pos": 0}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = GET_BIT(nv, pos) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(0)));
@@ -255,7 +402,13 @@ fn test_get_bit_clear() {
 #[test]
 fn test_bit_get_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 8, "pos": 3})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 8, "pos": 3}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_GET(nv, pos) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(1)));
@@ -265,7 +418,13 @@ fn test_bit_get_alias() {
 #[test]
 fn test_set_bit_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 0, "pos": 2})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 0, "pos": 2}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = SET_BIT(nv, pos) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(4)));
@@ -275,7 +434,13 @@ fn test_set_bit_basic() {
 #[test]
 fn test_bit_set_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 0, "pos": 2})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 0, "pos": 2}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_SET(nv, pos) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(4)));
@@ -285,7 +450,13 @@ fn test_bit_set_alias() {
 #[test]
 fn test_clear_bit_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 7, "pos": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 7, "pos": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = CLEAR_BIT(nv, pos) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(5)));
@@ -295,7 +466,13 @@ fn test_clear_bit_basic() {
 #[test]
 fn test_bit_clear_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 7, "pos": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 7, "pos": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BIT_CLEAR(nv, pos) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(5)));
@@ -305,7 +482,13 @@ fn test_bit_clear_alias() {
 #[test]
 fn test_flip_bit_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 5, "pos": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 5, "pos": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = FLIP_BIT(nv, pos) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(7)));
@@ -315,7 +498,13 @@ fn test_flip_bit_basic() {
 #[test]
 fn test_toggle_bit_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 5, "pos": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 5, "pos": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = TOGGLE_BIT(nv, pos) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(7)));
@@ -325,12 +514,24 @@ fn test_toggle_bit_alias() {
 #[test]
 fn test_int_to_bits_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 5})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 5}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = INT_TO_BITS(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let expected = Value::Array(vec![
-        Value::Integer(0), Value::Integer(0), Value::Integer(0), Value::Integer(0),
-        Value::Integer(0), Value::Integer(1), Value::Integer(0), Value::Integer(1),
+        Value::Integer(0),
+        Value::Integer(0),
+        Value::Integer(0),
+        Value::Integer(0),
+        Value::Integer(0),
+        Value::Integer(1),
+        Value::Integer(0),
+        Value::Integer(1),
     ]);
     assert_eq!(res.rows[0].data.get("r"), Some(&expected));
 }
@@ -339,11 +540,20 @@ fn test_int_to_bits_basic() {
 #[test]
 fn test_to_bit_array_alias_with_width() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 5, "wv": 4})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 5, "wv": 4}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = TO_BIT_ARRAY(nv, wv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let expected = Value::Array(vec![
-        Value::Integer(0), Value::Integer(1), Value::Integer(0), Value::Integer(1),
+        Value::Integer(0),
+        Value::Integer(1),
+        Value::Integer(0),
+        Value::Integer(1),
     ]);
     assert_eq!(res.rows[0].data.get("r"), Some(&expected));
 }
@@ -352,7 +562,13 @@ fn test_to_bit_array_alias_with_width() {
 #[test]
 fn test_bits_to_int_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": [1, 0, 1]})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": [1, 0, 1]}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BITS_TO_INT(av) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(5)));
@@ -362,7 +578,13 @@ fn test_bits_to_int_basic() {
 #[test]
 fn test_from_bit_array_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"av": [1, 0, 1]})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"av": [1, 0, 1]}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = FROM_BIT_ARRAY(av) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(5)));
@@ -372,7 +594,13 @@ fn test_from_bit_array_alias() {
 #[test]
 fn test_gray_code_zero() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 0})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 0}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = GRAY_CODE(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(0)));
@@ -382,7 +610,13 @@ fn test_gray_code_zero() {
 #[test]
 fn test_gray_code_one() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = GRAY_CODE(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(1)));
@@ -392,7 +626,13 @@ fn test_gray_code_one() {
 #[test]
 fn test_gray_code_two() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 2})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 2}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = GRAY_CODE(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(3)));
@@ -402,7 +642,13 @@ fn test_gray_code_two() {
 #[test]
 fn test_int_to_gray_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 2})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 2}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = INT_TO_GRAY(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(3)));
@@ -412,7 +658,13 @@ fn test_int_to_gray_alias() {
 #[test]
 fn test_gray_to_int_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 3})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 3}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = GRAY_TO_INT(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(2)));
@@ -422,7 +674,13 @@ fn test_gray_to_int_basic() {
 #[test]
 fn test_from_gray_code_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 3})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 3}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = FROM_GRAY_CODE(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(2)));
@@ -432,7 +690,13 @@ fn test_from_gray_code_alias() {
 #[test]
 fn test_is_power_of_two_true() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 8})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 8}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = IS_POWER_OF_TWO(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Bool(true)));
@@ -442,7 +706,13 @@ fn test_is_power_of_two_true() {
 #[test]
 fn test_is_power_of_two_false() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 6})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 6}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = IS_POWER_OF_TWO(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Bool(false)));
@@ -452,7 +722,13 @@ fn test_is_power_of_two_false() {
 #[test]
 fn test_is_pow2_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 16})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 16}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = IS_POW2(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Bool(true)));
@@ -462,7 +738,13 @@ fn test_is_pow2_alias() {
 #[test]
 fn test_next_power_of_two_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 5})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 5}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = NEXT_POWER_OF_TWO(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(8)));
@@ -472,7 +754,13 @@ fn test_next_power_of_two_basic() {
 #[test]
 fn test_next_pow2_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 5})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 5}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = NEXT_POW2(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(res.rows[0].data.get("r"), Some(&Value::Integer(8)));
@@ -482,11 +770,21 @@ fn test_next_pow2_alias() {
 #[test]
 fn test_byte_swap_returns_integer() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BYTE_SWAP(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let val = res.rows[0].data.get("r");
-    assert!(matches!(val, Some(Value::Integer(_))), "BYTE_SWAP should return Integer, got {:?}", val);
+    assert!(
+        matches!(val, Some(Value::Integer(_))),
+        "BYTE_SWAP should return Integer, got {:?}",
+        val
+    );
     // 1i64 byte-swapped: 0x0000000000000001 → 0x0100000000000000
     assert_eq!(val, Some(&Value::Integer(1i64.swap_bytes())));
 }
@@ -495,10 +793,20 @@ fn test_byte_swap_returns_integer() {
 #[test]
 fn test_bswap_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nv": 256})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": 256}),
+    )
+    .unwrap();
     let mut p = Parser::new("QUERY t COMPUTE r = BSWAP(nv) SELECT r;");
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let val = res.rows[0].data.get("r");
-    assert!(matches!(val, Some(Value::Integer(_))), "BSWAP should return Integer, got {:?}", val);
+    assert!(
+        matches!(val, Some(Value::Integer(_))),
+        "BSWAP should return Integer, got {:?}",
+        val
+    );
     assert_eq!(val, Some(&Value::Integer(256i64.swap_bytes())));
 }

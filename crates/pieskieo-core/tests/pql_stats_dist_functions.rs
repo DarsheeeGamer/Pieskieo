@@ -1,14 +1,27 @@
 /// Integration tests for PQL statistical distribution functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
 
-fn make_db_with_val(ns: &str, key: &str, val: f64) -> (tempfile::TempDir, Arc<PieskieoDb>, Executor) {
+fn make_db_with_val(
+    ns: &str,
+    key: &str,
+    val: f64,
+) -> (tempfile::TempDir, Arc<PieskieoDb>, Executor) {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some(ns), Uuid::new_v4(), serde_json::json!({key: val})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some(ns),
+        Uuid::new_v4(),
+        serde_json::json!({key: val}),
+    )
+    .unwrap();
     (dir, db, ex)
 }
 
@@ -47,11 +60,7 @@ fn test_normal_cdf_at_zero() {
     let mut p = Parser::new("QUERY t3 COMPUTE c = NORMAL_CDF(x, 0.0, 1.0) SELECT c;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.5).abs() < 0.01,
-            "expected ~0.5 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.5).abs() < 0.01, "expected ~0.5 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -63,11 +72,7 @@ fn test_normal_cdf_phi_alias() {
     let mut p = Parser::new("QUERY t4 COMPUTE c = PHI(x, 0.0, 1.0) SELECT c;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.975).abs() < 0.005,
-            "expected ~0.975 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.975).abs() < 0.005, "expected ~0.975 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -79,11 +84,7 @@ fn test_poisson_pmf() {
     let mut p = Parser::new("QUERY t5 COMPUTE pmf = POISSON_PMF(k, 2.0) SELECT pmf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pmf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.2707).abs() < 0.001,
-            "expected ~0.2707 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.2707).abs() < 0.001, "expected ~0.2707 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -95,11 +96,7 @@ fn test_poisson_cdf() {
     let mut p = Parser::new("QUERY t6 COMPUTE cdf = POISSON_CDF(k, 2.0) SELECT cdf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cdf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.6767).abs() < 0.005,
-            "expected ~0.6767 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.6767).abs() < 0.005, "expected ~0.6767 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -111,11 +108,7 @@ fn test_binomial_pmf() {
     let mut p = Parser::new("QUERY t7 COMPUTE pmf = BINOMIAL_PMF(k, 10.0, 0.5) SELECT pmf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pmf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.1172).abs() < 0.001,
-            "expected ~0.1172 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.1172).abs() < 0.001, "expected ~0.1172 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -127,11 +120,7 @@ fn test_binomial_cdf() {
     let mut p = Parser::new("QUERY t8 COMPUTE cdf = BINOMIAL_CDF(k, 10.0, 0.5) SELECT cdf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cdf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.1719).abs() < 0.002,
-            "expected ~0.1719 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.1719).abs() < 0.002, "expected ~0.1719 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -143,11 +132,7 @@ fn test_exponential_pdf() {
     let mut p = Parser::new("QUERY t9 COMPUTE pdf = EXPONENTIAL_PDF(x, 1.0) SELECT pdf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pdf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.3679).abs() < 0.001,
-            "expected ~0.3679 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.3679).abs() < 0.001, "expected ~0.3679 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -159,11 +144,7 @@ fn test_exponential_cdf() {
     let mut p = Parser::new("QUERY t10 COMPUTE cdf = EXPONENTIAL_CDF(x, 1.0) SELECT cdf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cdf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.6321).abs() < 0.001,
-            "expected ~0.6321 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.6321).abs() < 0.001, "expected ~0.6321 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -175,11 +156,7 @@ fn test_uniform_pdf_inside() {
     let mut p = Parser::new("QUERY t11 COMPUTE pdf = UNIFORM_PDF(x, 0.0, 1.0) SELECT pdf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pdf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 1.0).abs() < 1e-9,
-            "expected 1.0 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "expected 1.0 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -191,11 +168,7 @@ fn test_uniform_pdf_outside() {
     let mut p = Parser::new("QUERY t12 COMPUTE pdf = UNIFORM_PDF(x, 0.0, 1.0) SELECT pdf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pdf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.0).abs() < 1e-9,
-            "expected 0.0 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.0).abs() < 1e-9, "expected 0.0 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -207,11 +180,7 @@ fn test_uniform_cdf() {
     let mut p = Parser::new("QUERY t13 COMPUTE cdf = UNIFORM_CDF(x, 0.0, 1.0) SELECT cdf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cdf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.25).abs() < 1e-9,
-            "expected 0.25 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.25).abs() < 1e-9, "expected 0.25 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -223,11 +192,7 @@ fn test_z_score() {
     let mut p = Parser::new("QUERY t14 COMPUTE z = Z_SCORE(x, 3.0, 2.0) SELECT z;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("z") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 1.0).abs() < 1e-9,
-            "expected 1.0 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "expected 1.0 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -239,11 +204,7 @@ fn test_probit_at_half() {
     let mut p = Parser::new("QUERY t15 COMPUTE q = PROBIT(p) SELECT q;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("q") {
-        Some(Value::Float(f)) => assert!(
-            (*f).abs() < 0.001,
-            "expected ~0.0 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f).abs() < 0.001, "expected ~0.0 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -255,11 +216,7 @@ fn test_probit_at_975() {
     let mut p = Parser::new("QUERY t16 COMPUTE q = PROBIT(p) SELECT q;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("q") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 1.96).abs() < 0.01,
-            "expected ~1.96 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 1.96).abs() < 0.01, "expected ~1.96 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -283,11 +240,7 @@ fn test_exp_pdf_alias() {
     let mut p = Parser::new("QUERY t18 COMPUTE pdf = EXP_PDF(x, 2.0) SELECT pdf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pdf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 2.0).abs() < 1e-9,
-            "expected 2.0 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 2.0).abs() < 1e-9, "expected 2.0 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -299,11 +252,7 @@ fn test_exp_cdf_alias() {
     let mut p = Parser::new("QUERY t19 COMPUTE cdf = EXP_CDF(x, 1.0) SELECT cdf;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cdf") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.0).abs() < 1e-9,
-            "expected 0.0 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.0).abs() < 1e-9, "expected 0.0 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -315,11 +264,7 @@ fn test_standardize_value_alias() {
     let mut p = Parser::new("QUERY t20 COMPUTE z = STANDARDIZE_VALUE(x, 10.0, 5.0) SELECT z;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("z") {
-        Some(Value::Float(f)) => assert!(
-            (*f - 0.0).abs() < 1e-9,
-            "expected 0.0 got {}",
-            f
-        ),
+        Some(Value::Float(f)) => assert!((*f - 0.0).abs() < 1e-9, "expected 0.0 got {}", f),
         other => panic!("expected Float, got {:?}", other),
     }
 }

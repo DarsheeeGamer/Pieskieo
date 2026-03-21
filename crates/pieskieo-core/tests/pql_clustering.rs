@@ -77,8 +77,14 @@ fn test_kmeans_iterate_returns_object_with_correct_keys() {
         Some(Value::Object(o)) => o,
         other => panic!("expected Object, got {:?}", other),
     };
-    assert!(obj.contains_key("centroids"), "result must contain 'centroids'");
-    assert!(obj.contains_key("assignments"), "result must contain 'assignments'");
+    assert!(
+        obj.contains_key("centroids"),
+        "result must contain 'centroids'"
+    );
+    assert!(
+        obj.contains_key("assignments"),
+        "result must contain 'assignments'"
+    );
     assert!(obj.contains_key("inertia"), "result must contain 'inertia'");
 
     // assignments should be an array of 4 elements
@@ -120,7 +126,11 @@ fn test_kmeans_iterate_two_clusters_well_separated() {
     // With well-separated data, inertia should be small relative to separation
     match obj.get("inertia") {
         Some(Value::Float(f)) => {
-            assert!(*f < 1.0, "inertia should be small for well-separated clusters, got {}", f)
+            assert!(
+                *f < 1.0,
+                "inertia should be small for well-separated clusters, got {}",
+                f
+            )
         }
         other => panic!("expected Float for inertia, got {:?}", other),
     }
@@ -141,9 +151,7 @@ fn test_silhouette_well_separated_clusters() {
             "asgn": [0, 0, 0, 1, 1, 1]
         }),
     );
-    let mut p = Parser::new(
-        r#"QUERY sil COMPUTE s = CLUSTER_SILHOUETTE(data, asgn) SELECT s;"#,
-    );
+    let mut p = Parser::new(r#"QUERY sil COMPUTE s = CLUSTER_SILHOUETTE(data, asgn) SELECT s;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("s") {
         Some(Value::Float(f)) => {
@@ -167,8 +175,7 @@ fn test_silhouette_alias() {
             "asgn": [0, 0, 1, 1]
         }),
     );
-    let mut p =
-        Parser::new(r#"QUERY sil2 COMPUTE s = SILHOUETTE_SCORE(data, asgn) SELECT s;"#);
+    let mut p = Parser::new(r#"QUERY sil2 COMPUTE s = SILHOUETTE_SCORE(data, asgn) SELECT s;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("s") {
         Some(Value::Float(f)) => assert!(*f > 0.0, "silhouette should be positive, got {}", f),
@@ -212,17 +219,35 @@ fn test_dbscan_two_clusters_and_noise() {
     );
 
     // Cluster A points (0,1,2) should all share the same label (not -1)
-    let la0 = match &labels[0] { Value::Integer(i) => *i, _ => panic!("not integer") };
-    let la1 = match &labels[1] { Value::Integer(i) => *i, _ => panic!("not integer") };
-    let la2 = match &labels[2] { Value::Integer(i) => *i, _ => panic!("not integer") };
+    let la0 = match &labels[0] {
+        Value::Integer(i) => *i,
+        _ => panic!("not integer"),
+    };
+    let la1 = match &labels[1] {
+        Value::Integer(i) => *i,
+        _ => panic!("not integer"),
+    };
+    let la2 = match &labels[2] {
+        Value::Integer(i) => *i,
+        _ => panic!("not integer"),
+    };
     assert!(la0 >= 0, "cluster A point 0 should not be noise");
     assert_eq!(la0, la1, "cluster A points should share a label");
     assert_eq!(la0, la2, "cluster A points should share a label");
 
     // Cluster B points (3,4,5) should all share the same label, different from A
-    let lb3 = match &labels[3] { Value::Integer(i) => *i, _ => panic!("not integer") };
-    let lb4 = match &labels[4] { Value::Integer(i) => *i, _ => panic!("not integer") };
-    let lb5 = match &labels[5] { Value::Integer(i) => *i, _ => panic!("not integer") };
+    let lb3 = match &labels[3] {
+        Value::Integer(i) => *i,
+        _ => panic!("not integer"),
+    };
+    let lb4 = match &labels[4] {
+        Value::Integer(i) => *i,
+        _ => panic!("not integer"),
+    };
+    let lb5 = match &labels[5] {
+        Value::Integer(i) => *i,
+        _ => panic!("not integer"),
+    };
     assert!(lb3 >= 0, "cluster B point 3 should not be noise");
     assert_eq!(lb3, lb4, "cluster B points should share a label");
     assert_eq!(lb3, lb5, "cluster B points should share a label");
@@ -268,8 +293,18 @@ fn test_elbow_score_decreases_with_k() {
         Some(Value::Float(f)) => *f,
         other => panic!("expected Float for e3, got {:?}", other),
     };
-    assert!(e1 >= e2, "inertia(k=1) >= inertia(k=2), got {} vs {}", e1, e2);
-    assert!(e2 >= e3, "inertia(k=2) >= inertia(k=3), got {} vs {}", e2, e3);
+    assert!(
+        e1 >= e2,
+        "inertia(k=1) >= inertia(k=2), got {} vs {}",
+        e1,
+        e2
+    );
+    assert!(
+        e2 >= e3,
+        "inertia(k=2) >= inertia(k=3), got {} vs {}",
+        e2,
+        e3
+    );
 }
 
 // ── KNN_PREDICT ───────────────────────────────────────────────────────────────
@@ -387,8 +422,7 @@ fn test_pairwise_cosine_diagonal_is_one() {
             ]
         }),
     );
-    let mut p =
-        Parser::new(r#"QUERY cos COMPUTE m = PAIRWISE_COSINE(data) SELECT m;"#);
+    let mut p = Parser::new(r#"QUERY cos COMPUTE m = PAIRWISE_COSINE(data) SELECT m;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     let matrix = match r.rows[0].data.get("m") {
         Some(Value::Array(a)) => a.clone(),
@@ -421,8 +455,7 @@ fn test_pairwise_cosine_orthogonal_vectors() {
             "data": [[1.0, 0.0], [0.0, 1.0]]
         }),
     );
-    let mut p =
-        Parser::new(r#"QUERY cos2 COMPUTE m = COSINE_MATRIX(data) SELECT m;"#);
+    let mut p = Parser::new(r#"QUERY cos2 COMPUTE m = COSINE_MATRIX(data) SELECT m;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     let matrix = match r.rows[0].data.get("m") {
         Some(Value::Array(a)) => a.clone(),

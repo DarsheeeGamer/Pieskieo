@@ -67,29 +67,8 @@ pub(super) fn execute_query(
         }
     }
 
-    // Build an index hint from the first operation if it is a simple equality filter.
-    // This lets load_source pass the equality predicate to the engine's index lookup,
-    // potentially avoiding a full collection scan.
-    let index_hint: Option<std::collections::HashMap<String, serde_json::Value>> =
-        if let Some(Operation::Filter(Condition::Comparison {
-            op: ComparisonOp::Equal,
-            left: Expression::FieldAccess(path),
-            right: Expression::Literal(lit),
-        })) = ops.first()
-        {
-            if path.len() == 1 {
-                let mut map = std::collections::HashMap::new();
-                map.insert(path[0].clone(), source::literal_to_json(lit.clone()));
-                Some(map)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-    let mut current_rows =
-        source::load_source(executor, &source_expr, &mut stats, index_hint.as_ref())?;
+    // Fast-path for VectorSearch, Traverse, and FulltextSearch as the first operation.
+    // This avoids a full collection scan when we can use a specialized index (HNSW, BM25, Graph).
     let collection_name = match &source_expr {
         SourceExpr::Collection(name) => name.clone(),
         SourceExpr::CollectionAs { name, .. } => name.clone(),
@@ -98,7 +77,84 @@ pub(super) fn execute_query(
         SourceExpr::Values { alias, .. } => alias.clone().unwrap_or_default(),
     };
 
-    for operation in ops {
+    let mut ops_iter = ops.into_iter();
+    let mut current_rows = match ops_iter.next() {
+        Some(Operation::VectorSearch {
+            query_vector,
+            field,
+            top_k,
+            threshold,
+            metric,
+        }) => {
+            stats.vector_searches += 1;
+            vector::execute_vector_search(
+                executor,
+                vec![],
+                query_vector,
+                field,
+                top_k,
+                threshold,
+                metric,
+            )?
+        }
+        Some(Operation::Traverse {
+            edge_type,
+            edge_filter,
+            min_depth,
+            max_depth,
+            direction,
+            mode,
+        }) => {
+            // Traverse from collection: this means traverse from ALL nodes in the collection
+            let start_rows = source::load_source(executor, &source_expr, &mut stats, None)?;
+            stats.graph_traversals += 1;
+            graph::execute_traverse(
+                executor,
+                start_rows,
+                edge_type,
+                edge_filter,
+                min_depth,
+                max_depth,
+                direction,
+                mode,
+            )?
+        }
+        Some(Operation::FulltextSearch {
+            query,
+            field,
+            top_k,
+        }) => vector::execute_fulltext_search(
+            executor,
+            &collection_name,
+            vec![],
+            query,
+            field,
+            top_k,
+        )?,
+        Some(
+            first_op @ Operation::Filter(Condition::Comparison {
+                op: ComparisonOp::Equal,
+                left: Expression::FieldAccess(ref path),
+                right: Expression::Literal(ref lit),
+            }),
+        ) => {
+            if path.len() == 1 {
+                let mut map = std::collections::HashMap::new();
+                map.insert(path[0].clone(), source::literal_to_json(lit.clone()));
+                source::load_source(executor, &source_expr, &mut stats, Some(&map))?
+            } else {
+                let start_rows = source::load_source(executor, &source_expr, &mut stats, None)?;
+                execute_operation(executor, &collection_name, first_op, start_rows, &mut stats)?
+            }
+        }
+        Some(first_op) => {
+            let start_rows = source::load_source(executor, &source_expr, &mut stats, None)?;
+            execute_operation(executor, &collection_name, first_op, start_rows, &mut stats)?
+        }
+        None => source::load_source(executor, &source_expr, &mut stats, None)?,
+    };
+
+    for operation in ops_iter {
         current_rows = execute_operation(
             executor,
             &collection_name,
@@ -267,9 +323,7 @@ fn execute_operation(
             alpha,
         } => {
             stats.vector_searches += 1;
-            vector::execute_hybrid_search(
-                executor, collection, input, query, field, top_k, alpha,
-            )
+            vector::execute_hybrid_search(executor, collection, input, query, field, top_k, alpha)
         }
 
         Operation::Traverse {
@@ -301,15 +355,7 @@ fn execute_operation(
             edge_type,
         } => {
             stats.graph_traversals += 1;
-            graph::execute_path(
-                executor,
-                input,
-                mode,
-                from,
-                to,
-                max_depth,
-                edge_type,
-            )
+            graph::execute_path(executor, input, mode, from, to, max_depth, edge_type)
         }
 
         Operation::Match { pattern } => graph::execute_match(executor, input, pattern),
@@ -320,7 +366,9 @@ fn execute_operation(
             condition,
         } => joins::execute_join(executor, input, join_type, *source, condition),
 
-        Operation::GroupBy { fields, mode } => operations::execute_group_by(executor, input, fields, mode),
+        Operation::GroupBy { fields, mode } => {
+            operations::execute_group_by(executor, input, fields, mode)
+        }
 
         Operation::Having(condition) => {
             // Filter rows where the group-level aggregates satisfy the condition
@@ -362,7 +410,14 @@ fn execute_operation(
             pivot_field,
             pivot_values,
             aggregate,
-        } => operations::execute_pivot(executor, input, value_field, pivot_field, pivot_values, aggregate),
+        } => operations::execute_pivot(
+            executor,
+            input,
+            value_field,
+            pivot_field,
+            pivot_values,
+            aggregate,
+        ),
 
         Operation::Qualify { condition } => operations::execute_qualify(executor, input, condition),
 

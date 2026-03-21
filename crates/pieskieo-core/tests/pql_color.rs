@@ -112,8 +112,7 @@ fn test_hsv_to_rgb_red() {
     )
     .unwrap();
     // HSV(0, 1, 1) -> RGB(255, 0, 0)
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE rgb = HSV_TO_RGB(0.0, 1.0, 1.0) SELECT rgb;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE rgb = HSV_TO_RGB(0.0, 1.0, 1.0) SELECT rgb;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rgb") {
         Some(Value::Object(m)) => {
@@ -136,8 +135,7 @@ fn test_hsb_to_rgb_white() {
     )
     .unwrap();
     // HSV(0, 0, 1) -> RGB(255, 255, 255)
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE rgb = HSB_TO_RGB(0.0, 0.0, 1.0) SELECT rgb;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE rgb = HSB_TO_RGB(0.0, 0.0, 1.0) SELECT rgb;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rgb") {
         Some(Value::Object(m)) => {
@@ -162,8 +160,7 @@ fn test_hsv_to_hex() {
     )
     .unwrap();
     // HSV(0, 1, 1) -> #FF0000
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE hex = HSV_TO_HEX(0.0, 1.0, 1.0) SELECT hex;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE hex = HSV_TO_HEX(0.0, 1.0, 1.0) SELECT hex;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(
         r.rows[0].data.get("hex"),
@@ -243,22 +240,37 @@ fn test_rgb_to_cmyk_red() {
     )
     .unwrap();
     // Red RGB(255,0,0) -> CMYK(0, 1, 1, 0)
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE cmyk = RGB_TO_CMYK(255, 0, 0) SELECT cmyk;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE cmyk = RGB_TO_CMYK(255, 0, 0) SELECT cmyk;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cmyk") {
         Some(Value::Object(m)) => {
             if let Some(v) = m.get("c") {
-                assert!((to_f64(v) - 0.0).abs() < 0.01, "c should be 0, got {}", to_f64(v));
+                assert!(
+                    (to_f64(v) - 0.0).abs() < 0.01,
+                    "c should be 0, got {}",
+                    to_f64(v)
+                );
             }
             if let Some(v) = m.get("m") {
-                assert!((to_f64(v) - 1.0).abs() < 0.01, "m should be 1, got {}", to_f64(v));
+                assert!(
+                    (to_f64(v) - 1.0).abs() < 0.01,
+                    "m should be 1, got {}",
+                    to_f64(v)
+                );
             }
             if let Some(v) = m.get("y") {
-                assert!((to_f64(v) - 1.0).abs() < 0.01, "y should be 1, got {}", to_f64(v));
+                assert!(
+                    (to_f64(v) - 1.0).abs() < 0.01,
+                    "y should be 1, got {}",
+                    to_f64(v)
+                );
             }
             if let Some(v) = m.get("k") {
-                assert!((to_f64(v) - 0.0).abs() < 0.01, "k should be 0, got {}", to_f64(v));
+                assert!(
+                    (to_f64(v) - 0.0).abs() < 0.01,
+                    "k should be 0, got {}",
+                    to_f64(v)
+                );
             }
         }
         other => panic!("expected Object, got {:?}", other),
@@ -281,7 +293,11 @@ fn test_rgb_to_cmyk_black() {
     match r.rows[0].data.get("cmyk") {
         Some(Value::Object(m)) => {
             if let Some(v) = m.get("k") {
-                assert!((to_f64(v) - 1.0).abs() < 0.01, "k should be 1, got {}", to_f64(v));
+                assert!(
+                    (to_f64(v) - 1.0).abs() < 0.01,
+                    "k should be 1, got {}",
+                    to_f64(v)
+                );
             }
         }
         other => panic!("expected Object, got {:?}", other),
@@ -301,8 +317,7 @@ fn test_cmyk_to_rgb_red() {
     )
     .unwrap();
     // CMYK(0, 1, 1, 0) -> RGB(255, 0, 0)
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE rgb = CMYK_TO_RGB(0.0, 1.0, 1.0, 0.0) SELECT rgb;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE rgb = CMYK_TO_RGB(0.0, 1.0, 1.0, 0.0) SELECT rgb;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rgb") {
         Some(Value::Object(m)) => {
@@ -357,8 +372,7 @@ fn test_cmyk_to_hex_black() {
     )
     .unwrap();
     // CMYK(0, 0, 0, 1) -> #000000
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE hex = CMYK_TO_HEX(0.0, 0.0, 0.0, 1.0) SELECT hex;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE hex = CMYK_TO_HEX(0.0, 0.0, 0.0, 1.0) SELECT hex;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(
         r.rows[0].data.get("hex"),
@@ -379,8 +393,7 @@ fn test_rgb_to_xyz_white() {
     )
     .unwrap();
     // White: RGB(255,255,255) -> XYZ roughly (95, 100, 108)
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE xyz = RGB_TO_XYZ(255, 255, 255) SELECT xyz;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE xyz = RGB_TO_XYZ(255, 255, 255) SELECT xyz;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("xyz") {
         Some(Value::Object(m)) => {
@@ -406,8 +419,7 @@ fn test_rgb_to_ciexyz_alias() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE xyz = RGB_TO_CIEXYZ(0, 0, 0) SELECT xyz;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE xyz = RGB_TO_CIEXYZ(0, 0, 0) SELECT xyz;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("xyz") {
         Some(Value::Object(m)) => {
@@ -436,9 +448,8 @@ fn test_xyz_to_lab_white() {
     )
     .unwrap();
     // D65 white point: XYZ(95.047, 100, 108.883) -> LAB(100, 0, 0)
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE lab = XYZ_TO_LAB(95.047, 100.0, 108.883) SELECT lab;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE lab = XYZ_TO_LAB(95.047, 100.0, 108.883) SELECT lab;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("lab") {
         Some(Value::Object(m)) => {
@@ -467,8 +478,7 @@ fn test_rgb_to_lab_black() {
     )
     .unwrap();
     // Black: RGB(0,0,0) -> LAB(0, 0, 0)
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE lab = RGB_TO_LAB(0, 0, 0) SELECT lab;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE lab = RGB_TO_LAB(0, 0, 0) SELECT lab;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("lab") {
         Some(Value::Object(m)) => {
@@ -494,8 +504,7 @@ fn test_rgb_to_cielab_alias() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE lab = RGB_TO_CIELAB(255, 255, 255) SELECT lab;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE lab = RGB_TO_CIELAB(255, 255, 255) SELECT lab;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("lab") {
         Some(Value::Object(m)) => {
@@ -524,9 +533,8 @@ fn test_color_delta_e_same_color() {
     )
     .unwrap();
     // Same color -> delta_E = 0
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE de = COLOR_DELTA_E(255, 0, 0, 255, 0, 0) SELECT de;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE de = COLOR_DELTA_E(255, 0, 0, 255, 0, 0) SELECT de;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     if let Some(v) = r.rows[0].data.get("de") {
         assert!(
@@ -548,9 +556,7 @@ fn test_color_delta_e_different_colors() {
     )
     .unwrap();
     // Black vs white -> large delta_E
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE de = DELTA_E(0, 0, 0, 255, 255, 255) SELECT de;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE de = DELTA_E(0, 0, 0, 255, 255, 255) SELECT de;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     if let Some(v) = r.rows[0].data.get("de") {
         assert!(
@@ -573,9 +579,8 @@ fn test_split_complementary_returns_3() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE cols = SPLIT_COMPLEMENTARY(255, 0, 0) SELECT cols;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE cols = SPLIT_COMPLEMENTARY(255, 0, 0) SELECT cols;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cols") {
         Some(Value::Array(arr)) => {
@@ -597,9 +602,7 @@ fn test_split_comp_colors_alias() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE cols = SPLIT_COMP_COLORS(0, 255, 0) SELECT cols;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE cols = SPLIT_COMP_COLORS(0, 255, 0) SELECT cols;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cols") {
         Some(Value::Array(arr)) => {
@@ -621,9 +624,7 @@ fn test_square_colors_returns_4() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE cols = SQUARE_COLORS(255, 0, 0) SELECT cols;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE cols = SQUARE_COLORS(255, 0, 0) SELECT cols;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cols") {
         Some(Value::Array(arr)) => {
@@ -643,9 +644,8 @@ fn test_tetradic_colors_alias() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE cols = TETRADIC_COLORS(100, 150, 200) SELECT cols;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE cols = TETRADIC_COLORS(100, 150, 200) SELECT cols;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("cols") {
         Some(Value::Array(arr)) => {
@@ -667,9 +667,8 @@ fn test_monochromatic_palette_n5() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE pal = MONOCHROMATIC_PALETTE(200, 100, 50, 5) SELECT pal;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE pal = MONOCHROMATIC_PALETTE(200, 100, 50, 5) SELECT pal;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pal") {
         Some(Value::Array(arr)) => {
@@ -698,8 +697,7 @@ fn test_mono_palette_alias() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE pal = MONO_PALETTE(100, 200, 50, 3) SELECT pal;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE pal = MONO_PALETTE(100, 200, 50, 3) SELECT pal;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pal") {
         Some(Value::Array(arr)) => {
@@ -754,7 +752,10 @@ fn test_color_gradient_alias() {
             assert_eq!(arr.len(), 3);
             // Middle should be gray
             if let Value::String(s) = &arr[1] {
-                assert_eq!(s, "#808080", "middle of black-white gradient should be gray");
+                assert_eq!(
+                    s, "#808080",
+                    "middle of black-white gradient should be gray"
+                );
             }
         }
         other => panic!("expected Array, got {:?}", other),
@@ -904,8 +905,7 @@ fn test_color_temp_k_warm() {
     )
     .unwrap();
     // Very red: high r, low b -> low temperature (warm)
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE temp = COLOR_TEMP_K(255, 128, 0) SELECT temp;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE temp = COLOR_TEMP_K(255, 128, 0) SELECT temp;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     if let Some(v) = r.rows[0].data.get("temp") {
         assert!(
@@ -927,8 +927,7 @@ fn test_color_temp_k_cool() {
     )
     .unwrap();
     // Very blue: low r, high b -> high temperature (cool)
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE temp = COLOR_TEMP_K(0, 128, 255) SELECT temp;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE temp = COLOR_TEMP_K(0, 128, 255) SELECT temp;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     if let Some(v) = r.rows[0].data.get("temp") {
         assert!(
@@ -951,8 +950,7 @@ fn test_is_warm_color_red() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE warm = IS_WARM_COLOR(255, 0, 0) SELECT warm;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE warm = IS_WARM_COLOR(255, 0, 0) SELECT warm;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(
         r.rows[0].data.get("warm"),
@@ -992,8 +990,7 @@ fn test_is_cool_color_blue() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE cool = IS_COOL_COLOR(0, 0, 255) SELECT cool;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE cool = IS_COOL_COLOR(0, 0, 255) SELECT cool;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(
         r.rows[0].data.get("cool"),
@@ -1034,9 +1031,7 @@ fn test_color_brightness_white() {
     )
     .unwrap();
     // White -> brightness ~255
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE br = COLOR_BRIGHTNESS(255, 255, 255) SELECT br;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE br = COLOR_BRIGHTNESS(255, 255, 255) SELECT br;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     if let Some(v) = r.rows[0].data.get("br") {
         assert!(
@@ -1057,9 +1052,7 @@ fn test_color_brightness_black() {
         serde_json::json!({"dummy": 1}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE br = PERCEIVED_BRIGHTNESS(0, 0, 0) SELECT br;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE br = PERCEIVED_BRIGHTNESS(0, 0, 0) SELECT br;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     if let Some(v) = r.rows[0].data.get("br") {
         assert!(
@@ -1083,9 +1076,8 @@ fn test_color_saturation_level_gray() {
     )
     .unwrap();
     // Gray: RGB(128, 128, 128) -> saturation 0
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE sat = COLOR_SATURATION_LEVEL(128, 128, 128) SELECT sat;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE sat = COLOR_SATURATION_LEVEL(128, 128, 128) SELECT sat;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     if let Some(v) = r.rows[0].data.get("sat") {
         assert!(
@@ -1107,9 +1099,7 @@ fn test_saturation_amount_alias_red() {
     )
     .unwrap();
     // Red: RGB(255, 0, 0) -> saturation 1
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE sat = SATURATION_AMOUNT(255, 0, 0) SELECT sat;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE sat = SATURATION_AMOUNT(255, 0, 0) SELECT sat;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     if let Some(v) = r.rows[0].data.get("sat") {
         assert!(

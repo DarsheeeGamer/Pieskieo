@@ -1,5 +1,8 @@
 /// Integration tests for PQL fuzzy string matching and string distance metric functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -15,12 +18,21 @@ fn setup() -> (Arc<PieskieoDb>, Executor) {
 #[test]
 fn test_levenshtein_identical() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "hello", "s2": "hello"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "hello", "s2": "hello"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE d = LEVENSHTEIN(s1, s2) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 0, "LEVENSHTEIN of identical strings should be 0, got {}", i),
+        Some(Value::Integer(i)) => assert_eq!(
+            *i, 0,
+            "LEVENSHTEIN of identical strings should be 0, got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -29,12 +41,19 @@ fn test_levenshtein_identical() {
 #[test]
 fn test_levenshtein_empty_vs_abc() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "", "s2": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "", "s2": "abc"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE d = LEVENSHTEIN(s1, s2) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 3, "LEVENSHTEIN('', 'abc') should be 3, got {}", i),
+        Some(Value::Integer(i)) => {
+            assert_eq!(*i, 3, "LEVENSHTEIN('', 'abc') should be 3, got {}", i)
+        }
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -43,12 +62,21 @@ fn test_levenshtein_empty_vs_abc() {
 #[test]
 fn test_levenshtein_kitten_sitting() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "kitten", "s2": "sitting"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "kitten", "s2": "sitting"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE d = LEVENSHTEIN(s1, s2) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 3, "LEVENSHTEIN('kitten','sitting') should be 3, got {}", i),
+        Some(Value::Integer(i)) => assert_eq!(
+            *i, 3,
+            "LEVENSHTEIN('kitten','sitting') should be 3, got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -57,12 +85,21 @@ fn test_levenshtein_kitten_sitting() {
 #[test]
 fn test_edit_distance_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "kitten", "s2": "sitting"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "kitten", "s2": "sitting"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE d = EDIT_DISTANCE(s1, s2) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 3, "EDIT_DISTANCE('kitten','sitting') should be 3, got {}", i),
+        Some(Value::Integer(i)) => assert_eq!(
+            *i, 3,
+            "EDIT_DISTANCE('kitten','sitting') should be 3, got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -71,27 +108,52 @@ fn test_edit_distance_alias() {
 #[test]
 fn test_damerau_levenshtein_lte_levenshtein() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "ca", "s2": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "ca", "s2": "abc"}),
+    )
+    .unwrap();
     let mut p_dl = Parser::new(r#"QUERY t COMPUTE d = DAMERAU_LEVENSHTEIN(s1, s2) SELECT d;"#);
     let mut p_lv = Parser::new(r#"QUERY t COMPUTE d = LEVENSHTEIN(s1, s2) SELECT d;"#);
     let r_dl = ex.execute(p_dl.parse().unwrap()).unwrap();
     let r_lv = ex.execute(p_lv.parse().unwrap()).unwrap();
-    let dl = match r_dl.rows[0].data.get("d") { Some(Value::Integer(i)) => *i, other => panic!("expected integer, got {:?}", other) };
-    let lv = match r_lv.rows[0].data.get("d") { Some(Value::Integer(i)) => *i, other => panic!("expected integer, got {:?}", other) };
-    assert!(dl <= lv, "DAMERAU_LEVENSHTEIN should be <= LEVENSHTEIN, got dl={} lv={}", dl, lv);
+    let dl = match r_dl.rows[0].data.get("d") {
+        Some(Value::Integer(i)) => *i,
+        other => panic!("expected integer, got {:?}", other),
+    };
+    let lv = match r_lv.rows[0].data.get("d") {
+        Some(Value::Integer(i)) => *i,
+        other => panic!("expected integer, got {:?}", other),
+    };
+    assert!(
+        dl <= lv,
+        "DAMERAU_LEVENSHTEIN should be <= LEVENSHTEIN, got dl={} lv={}",
+        dl,
+        lv
+    );
 }
 
 // ── 6. DAMERAU_DIST alias ─────────────────────────────────────────────────
 #[test]
 fn test_damerau_dist_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "ab", "s2": "ba"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "ab", "s2": "ba"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE d = DAMERAU_DIST(s1, s2) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 1, "DAMERAU_DIST('ab','ba') should be 1 (one transposition), got {}", i),
+        Some(Value::Integer(i)) => assert_eq!(
+            *i, 1,
+            "DAMERAU_DIST('ab','ba') should be 1 (one transposition), got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -100,12 +162,21 @@ fn test_damerau_dist_alias() {
 #[test]
 fn test_jaro_martha_marhta() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "martha", "s2": "marhta"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "martha", "s2": "marhta"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE j = JARO(s1, s2) SELECT j;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("j") {
-        Some(Value::Float(f)) => assert!((*f - 0.944).abs() < 0.01, "JARO('martha','marhta') should be ≈0.944, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 0.944).abs() < 0.01,
+            "JARO('martha','marhta') should be ≈0.944, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -114,12 +185,21 @@ fn test_jaro_martha_marhta() {
 #[test]
 fn test_jaro_similarity_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "martha", "s2": "marhta"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "martha", "s2": "marhta"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE j = JARO_SIMILARITY(s1, s2) SELECT j;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("j") {
-        Some(Value::Float(f)) => assert!(*f >= 0.0 && *f <= 1.0, "JARO_SIMILARITY should return value in [0,1], got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f >= 0.0 && *f <= 1.0,
+            "JARO_SIMILARITY should return value in [0,1], got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -128,12 +208,21 @@ fn test_jaro_similarity_alias() {
 #[test]
 fn test_jaro_both_empty() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "", "s2": ""})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "", "s2": ""}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE j = JARO(s1, s2) SELECT j;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("j") {
-        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "JARO('','') should be 1.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1.0).abs() < 1e-9,
+            "JARO('','') should be 1.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -142,12 +231,21 @@ fn test_jaro_both_empty() {
 #[test]
 fn test_jaro_winkler_identical() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "john", "s2": "john"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "john", "s2": "john"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE j = JARO_WINKLER(s1, s2) SELECT j;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("j") {
-        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "JARO_WINKLER('john','john') should be 1.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1.0).abs() < 1e-9,
+            "JARO_WINKLER('john','john') should be 1.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -156,12 +254,21 @@ fn test_jaro_winkler_identical() {
 #[test]
 fn test_jaro_winkler_partial() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "john", "s2": "jane"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "john", "s2": "jane"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE j = JARO_WINKLER(s1, s2) SELECT j;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("j") {
-        Some(Value::Float(f)) => assert!(*f > 0.0 && *f < 1.0, "JARO_WINKLER('john','jane') should be between 0 and 1, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f > 0.0 && *f < 1.0,
+            "JARO_WINKLER('john','jane') should be between 0 and 1, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -170,12 +277,21 @@ fn test_jaro_winkler_partial() {
 #[test]
 fn test_jaro_winkler_sim_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "john", "s2": "john"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "john", "s2": "john"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE j = JARO_WINKLER_SIM(s1, s2) SELECT j;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("j") {
-        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "JARO_WINKLER_SIM('john','john') should be 1.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1.0).abs() < 1e-9,
+            "JARO_WINKLER_SIM('john','john') should be 1.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -184,12 +300,21 @@ fn test_jaro_winkler_sim_alias() {
 #[test]
 fn test_normalized_edit_dist_identical() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abc", "s2": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abc", "s2": "abc"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE d = NORMALIZED_EDIT_DIST(s1, s2) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Float(f)) => assert!((*f).abs() < 1e-9, "NORMALIZED_EDIT_DIST of identical strings should be 0.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f).abs() < 1e-9,
+            "NORMALIZED_EDIT_DIST of identical strings should be 0.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -198,12 +323,21 @@ fn test_normalized_edit_dist_identical() {
 #[test]
 fn test_normalized_edit_dist_empty() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abc", "s2": ""})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abc", "s2": ""}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE d = NORMALIZED_EDIT_DIST(s1, s2) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "NORMALIZED_EDIT_DIST('abc','') should be 1.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1.0).abs() < 1e-9,
+            "NORMALIZED_EDIT_DIST('abc','') should be 1.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -212,12 +346,21 @@ fn test_normalized_edit_dist_empty() {
 #[test]
 fn test_normalized_levenshtein_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abc", "s2": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abc", "s2": "abc"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE d = NORMALIZED_LEVENSHTEIN(s1, s2) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Float(f)) => assert!((*f).abs() < 1e-9, "NORMALIZED_LEVENSHTEIN of identical strings should be 0.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f).abs() < 1e-9,
+            "NORMALIZED_LEVENSHTEIN of identical strings should be 0.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -226,12 +369,19 @@ fn test_normalized_levenshtein_alias() {
 #[test]
 fn test_lcs_length_abcde_ace() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abcde", "s2": "ace"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abcde", "s2": "ace"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE l = LCS_LENGTH(s1, s2) SELECT l;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("l") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 3, "LCS_LENGTH('abcde','ace') should be 3, got {}", i),
+        Some(Value::Integer(i)) => {
+            assert_eq!(*i, 3, "LCS_LENGTH('abcde','ace') should be 3, got {}", i)
+        }
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -240,12 +390,19 @@ fn test_lcs_length_abcde_ace() {
 #[test]
 fn test_lcs_length_identical() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abc", "s2": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abc", "s2": "abc"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE l = LCS_LENGTH(s1, s2) SELECT l;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("l") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 3, "LCS_LENGTH('abc','abc') should be 3, got {}", i),
+        Some(Value::Integer(i)) => {
+            assert_eq!(*i, 3, "LCS_LENGTH('abc','abc') should be 3, got {}", i)
+        }
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -254,12 +411,21 @@ fn test_lcs_length_identical() {
 #[test]
 fn test_longest_common_subseq_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abcde", "s2": "ace"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abcde", "s2": "ace"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE l = LONGEST_COMMON_SUBSEQ(s1, s2) SELECT l;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("l") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 3, "LONGEST_COMMON_SUBSEQ('abcde','ace') should be 3, got {}", i),
+        Some(Value::Integer(i)) => assert_eq!(
+            *i, 3,
+            "LONGEST_COMMON_SUBSEQ('abcde','ace') should be 3, got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -268,12 +434,21 @@ fn test_longest_common_subseq_alias() {
 #[test]
 fn test_longest_common_substr_bcd() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abcdef", "s2": "bcd"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abcdef", "s2": "bcd"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE l = LONGEST_COMMON_SUBSTR(s1, s2) SELECT l;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("l") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 3, "LONGEST_COMMON_SUBSTR('abcdef','bcd') should be 3, got {}", i),
+        Some(Value::Integer(i)) => assert_eq!(
+            *i, 3,
+            "LONGEST_COMMON_SUBSTR('abcdef','bcd') should be 3, got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -282,12 +457,21 @@ fn test_longest_common_substr_bcd() {
 #[test]
 fn test_longest_common_substr_no_match() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abcdef", "s2": "xyz"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abcdef", "s2": "xyz"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE l = LONGEST_COMMON_SUBSTR(s1, s2) SELECT l;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("l") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 0, "LONGEST_COMMON_SUBSTR('abcdef','xyz') should be 0, got {}", i),
+        Some(Value::Integer(i)) => assert_eq!(
+            *i, 0,
+            "LONGEST_COMMON_SUBSTR('abcdef','xyz') should be 0, got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -296,12 +480,21 @@ fn test_longest_common_substr_no_match() {
 #[test]
 fn test_lcsubstr_length_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abcdef", "s2": "bcd"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abcdef", "s2": "bcd"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE l = LCSUBSTR_LENGTH(s1, s2) SELECT l;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("l") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 3, "LCSUBSTR_LENGTH('abcdef','bcd') should be 3, got {}", i),
+        Some(Value::Integer(i)) => assert_eq!(
+            *i, 3,
+            "LCSUBSTR_LENGTH('abcdef','bcd') should be 3, got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -310,12 +503,21 @@ fn test_lcsubstr_length_alias() {
 #[test]
 fn test_fuzzy_score_identical() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "hello", "s2": "hello"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "hello", "s2": "hello"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = FUZZY_SCORE(s1, s2) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "FUZZY_SCORE('hello','hello') should be 1.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1.0).abs() < 1e-9,
+            "FUZZY_SCORE('hello','hello') should be 1.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -324,12 +526,21 @@ fn test_fuzzy_score_identical() {
 #[test]
 fn test_fuzzy_score_different() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "hello", "s2": "world"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "hello", "s2": "world"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = FUZZY_SCORE(s1, s2) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(Value::Float(f)) => assert!(*f > 0.0 && *f < 1.0, "FUZZY_SCORE('hello','world') should be between 0 and 1, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f > 0.0 && *f < 1.0,
+            "FUZZY_SCORE('hello','world') should be between 0 and 1, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -338,12 +549,21 @@ fn test_fuzzy_score_different() {
 #[test]
 fn test_fuzzy_match_score_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "hello", "s2": "hello"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "hello", "s2": "hello"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = FUZZY_MATCH_SCORE(s1, s2) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "FUZZY_MATCH_SCORE('hello','hello') should be 1.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1.0).abs() < 1e-9,
+            "FUZZY_MATCH_SCORE('hello','hello') should be 1.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -352,12 +572,21 @@ fn test_fuzzy_match_score_alias() {
 #[test]
 fn test_token_sort_ratio_reordered() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "foo bar", "s2": "bar foo"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "foo bar", "s2": "bar foo"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = TOKEN_SORT_RATIO(s1, s2) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "TOKEN_SORT_RATIO('foo bar','bar foo') should be 1.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1.0).abs() < 1e-9,
+            "TOKEN_SORT_RATIO('foo bar','bar foo') should be 1.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -366,12 +595,21 @@ fn test_token_sort_ratio_reordered() {
 #[test]
 fn test_token_sort_ratio_different() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abc def", "s2": "xyz uvw"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abc def", "s2": "xyz uvw"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = TOKEN_SORT_RATIO(s1, s2) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(Value::Float(f)) => assert!(*f < 0.5, "TOKEN_SORT_RATIO of very different strings should be low, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f < 0.5,
+            "TOKEN_SORT_RATIO of very different strings should be low, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -380,12 +618,21 @@ fn test_token_sort_ratio_different() {
 #[test]
 fn test_sorted_token_similarity_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "foo bar", "s2": "bar foo"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "foo bar", "s2": "bar foo"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = SORTED_TOKEN_SIMILARITY(s1, s2) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "SORTED_TOKEN_SIMILARITY('foo bar','bar foo') should be 1.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1.0).abs() < 1e-9,
+            "SORTED_TOKEN_SIMILARITY('foo bar','bar foo') should be 1.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -394,12 +641,20 @@ fn test_sorted_token_similarity_alias() {
 #[test]
 fn test_contains_fuzzy_typo() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"hay": "hello world", "ndl": "wrold", "thresh": 2})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"hay": "hello world", "ndl": "wrold", "thresh": 2}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE r = CONTAINS_FUZZY(hay, ndl, thresh) SELECT r;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("r") {
-        Some(Value::Bool(b)) => assert!(*b, "CONTAINS_FUZZY('hello world','wrold',2) should be true (typo within 2 edits)"),
+        Some(Value::Bool(b)) => assert!(
+            *b,
+            "CONTAINS_FUZZY('hello world','wrold',2) should be true (typo within 2 edits)"
+        ),
         other => panic!("expected bool, got {:?}", other),
     }
 }
@@ -408,12 +663,19 @@ fn test_contains_fuzzy_typo() {
 #[test]
 fn test_contains_fuzzy_no_match() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"hay": "hello world", "ndl": "xyz", "thresh": 0})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"hay": "hello world", "ndl": "xyz", "thresh": 0}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE r = CONTAINS_FUZZY(hay, ndl, thresh) SELECT r;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("r") {
-        Some(Value::Bool(b)) => assert!(!*b, "CONTAINS_FUZZY('hello world','xyz',0) should be false"),
+        Some(Value::Bool(b)) => {
+            assert!(!*b, "CONTAINS_FUZZY('hello world','xyz',0) should be false")
+        }
         other => panic!("expected bool, got {:?}", other),
     }
 }
@@ -422,12 +684,20 @@ fn test_contains_fuzzy_no_match() {
 #[test]
 fn test_fuzzy_contains_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"hay": "hello world", "ndl": "world", "thresh": 0})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"hay": "hello world", "ndl": "world", "thresh": 0}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE r = FUZZY_CONTAINS(hay, ndl, thresh) SELECT r;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("r") {
-        Some(Value::Bool(b)) => assert!(*b, "FUZZY_CONTAINS('hello world','world',0) should be true (exact match)"),
+        Some(Value::Bool(b)) => assert!(
+            *b,
+            "FUZZY_CONTAINS('hello world','world',0) should be true (exact match)"
+        ),
         other => panic!("expected bool, got {:?}", other),
     }
 }
@@ -437,12 +707,19 @@ fn test_fuzzy_contains_alias() {
 #[test]
 fn test_levenshtein_abc_xyz() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abc", "s2": "xyz"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abc", "s2": "xyz"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE d = LEVENSHTEIN(s1, s2) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 3, "LEVENSHTEIN('abc','xyz') should be 3, got {}", i),
+        Some(Value::Integer(i)) => {
+            assert_eq!(*i, 3, "LEVENSHTEIN('abc','xyz') should be 3, got {}", i)
+        }
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -450,12 +727,21 @@ fn test_levenshtein_abc_xyz() {
 #[test]
 fn test_damerau_dist_identical() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "hello", "s2": "hello"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "hello", "s2": "hello"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE d = DAMERAU_DIST(s1, s2) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 0, "DAMERAU_DIST of identical strings should be 0, got {}", i),
+        Some(Value::Integer(i)) => assert_eq!(
+            *i, 0,
+            "DAMERAU_DIST of identical strings should be 0, got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -463,12 +749,21 @@ fn test_damerau_dist_identical() {
 #[test]
 fn test_jaro_winkler_sim_partial() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "john", "s2": "jane"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "john", "s2": "jane"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE j = JARO_WINKLER_SIM(s1, s2) SELECT j;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("j") {
-        Some(Value::Float(f)) => assert!(*f >= 0.0 && *f <= 1.0, "JARO_WINKLER_SIM should be in [0,1], got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f >= 0.0 && *f <= 1.0,
+            "JARO_WINKLER_SIM should be in [0,1], got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -476,12 +771,19 @@ fn test_jaro_winkler_sim_partial() {
 #[test]
 fn test_lcs_length_no_common() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "aaa", "s2": "bbb"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "aaa", "s2": "bbb"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE l = LCS_LENGTH(s1, s2) SELECT l;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("l") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 0, "LCS_LENGTH('aaa','bbb') should be 0, got {}", i),
+        Some(Value::Integer(i)) => {
+            assert_eq!(*i, 0, "LCS_LENGTH('aaa','bbb') should be 0, got {}", i)
+        }
         other => panic!("expected integer, got {:?}", other),
     }
 }
@@ -489,12 +791,21 @@ fn test_lcs_length_no_common() {
 #[test]
 fn test_fuzzy_score_case_insensitive() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "Hello", "s2": "hello"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "Hello", "s2": "hello"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = FUZZY_SCORE(s1, s2) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "FUZZY_SCORE should be case-insensitive, 'Hello'/'hello' should be 1.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1.0).abs() < 1e-9,
+            "FUZZY_SCORE should be case-insensitive, 'Hello'/'hello' should be 1.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -502,12 +813,21 @@ fn test_fuzzy_score_case_insensitive() {
 #[test]
 fn test_token_sort_ratio_identical() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "hello world", "s2": "hello world"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "hello world", "s2": "hello world"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = TOKEN_SORT_RATIO(s1, s2) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(Value::Float(f)) => assert!((*f - 1.0).abs() < 1e-9, "TOKEN_SORT_RATIO of identical strings should be 1.0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1.0).abs() < 1e-9,
+            "TOKEN_SORT_RATIO of identical strings should be 1.0, got {}",
+            f
+        ),
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -515,8 +835,13 @@ fn test_token_sort_ratio_identical() {
 #[test]
 fn test_contains_fuzzy_exact_match() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"hay": "hello world", "ndl": "hello", "thresh": 0})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"hay": "hello world", "ndl": "hello", "thresh": 0}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE r = CONTAINS_FUZZY(hay, ndl, thresh) SELECT r;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("r") {
@@ -528,12 +853,21 @@ fn test_contains_fuzzy_exact_match() {
 #[test]
 fn test_longest_common_substr_full_overlap() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"s1": "abc", "s2": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"s1": "abc", "s2": "abc"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE l = LONGEST_COMMON_SUBSTR(s1, s2) SELECT l;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("l") {
-        Some(Value::Integer(i)) => assert_eq!(*i, 3, "LONGEST_COMMON_SUBSTR('abc','abc') should be 3, got {}", i),
+        Some(Value::Integer(i)) => assert_eq!(
+            *i, 3,
+            "LONGEST_COMMON_SUBSTR('abc','abc') should be 3, got {}",
+            i
+        ),
         other => panic!("expected integer, got {:?}", other),
     }
 }

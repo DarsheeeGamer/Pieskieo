@@ -58,6 +58,11 @@ pub enum Token {
     Shortest,
     All,
     Any,
+    Direction,
+    Incoming,
+    Outgoing,
+    Both,
+    Breadth,
 
     // Computed fields
     Compute,
@@ -111,6 +116,7 @@ pub enum Token {
     Percent,          // %
     Caret,            // ^
     Arrow,            // ->
+    BackArrow,        // <-
 
     // Delimiters
     LeftParen,    // (
@@ -195,6 +201,9 @@ impl Lexer {
                 } else if self.peek_char() == '>' {
                     self.read_char();
                     Token::NotEqual
+                } else if self.peek_char() == '-' {
+                    self.read_char();
+                    Token::BackArrow
                 } else {
                     Token::LessThan
                 }
@@ -286,6 +295,8 @@ impl Lexer {
             "AS" => Token::As,
             "ASC" => Token::Asc,
             "BETWEEN" => Token::Between,
+            "BOTH" => Token::Both,
+            "BREADTH" => Token::Breadth,
             "BOOLEAN" => Token::Boolean_,
             "BYTES" => Token::Bytes_,
             "CHECK" => Token::Check,
@@ -297,6 +308,7 @@ impl Lexer {
             "DELETE" => Token::Delete,
             "DEPTH" => Token::Depth,
             "DESC" => Token::Desc,
+            "DIRECTION" => Token::Direction,
             "DISTINCT" => Token::Distinct,
             "DROP" => Token::Drop,
             "EDGE" => Token::Edge,
@@ -311,6 +323,7 @@ impl Lexer {
             "FULL" => Token::Full,
             "GROUPBY" => Token::GroupBy,
             "IN" => Token::In,
+            "INCOMING" => Token::Incoming,
             "INDEX" => Token::Index,
             "INNER" => Token::Inner,
             "INSERT" => Token::Insert,
@@ -330,6 +343,7 @@ impl Lexer {
             "ON" => Token::On,
             "OR" => Token::Or,
             "ORDERBY" => Token::OrderBy,
+            "OUTGOING" => Token::Outgoing,
             "PATH" => Token::Path,
             "PRIMARYKEY" => Token::PrimaryKey,
             "QUERY" => Token::Query,

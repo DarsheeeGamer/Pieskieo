@@ -24,9 +24,8 @@ fn test_bloom_contains_present() {
         serde_json::json!({"items": ["apple", "banana", "cherry"], "q": "apple"}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE found = BLOOM_CONTAINS(items, q, 0.01) SELECT found;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE found = BLOOM_CONTAINS(items, q, 0.01) SELECT found;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(
         r.rows[0].data.get("found"),
@@ -42,7 +41,10 @@ fn test_bloom_contains_absent() {
     // Build a set of 100 items, none of which is "zzznothere999"
     let items: Vec<String> = (0..100).map(|i| format!("item{}", i)).collect();
     let json_items = serde_json::Value::Array(
-        items.iter().map(|s| serde_json::Value::String(s.clone())).collect(),
+        items
+            .iter()
+            .map(|s| serde_json::Value::String(s.clone()))
+            .collect(),
     );
     db.put_doc_ns(
         None,
@@ -52,9 +54,8 @@ fn test_bloom_contains_absent() {
     )
     .unwrap();
     // With n_bits = max(64, 100*10) = 1000, probability of false positive is very low
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE found = BLOOM_CONTAINS(items, q, 0.01) SELECT found;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE found = BLOOM_CONTAINS(items, q, 0.01) SELECT found;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     // Should be false (absent) given the large bit array
     assert_eq!(
@@ -79,8 +80,14 @@ fn test_bloom_build_returns_object() {
     match r.rows[0].data.get("bf") {
         Some(Value::Object(obj)) => {
             assert!(obj.contains_key("bits"), "bloom object should have 'bits'");
-            assert!(obj.contains_key("n_bits"), "bloom object should have 'n_bits'");
-            assert!(obj.contains_key("n_hashes"), "bloom object should have 'n_hashes'");
+            assert!(
+                obj.contains_key("n_bits"),
+                "bloom object should have 'n_bits'"
+            );
+            assert!(
+                obj.contains_key("n_hashes"),
+                "bloom object should have 'n_hashes'"
+            );
             // n_hashes should be 3
             assert_eq!(obj.get("n_hashes"), Some(&Value::Integer(3)));
         }
@@ -98,8 +105,7 @@ fn test_hll_count_small() {
         serde_json::json!({"items": ["a", "b", "c", "a", "b", "d"]}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE cnt = HLL_COUNT(items) SELECT cnt;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE cnt = HLL_COUNT(items) SELECT cnt;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     // Exact distinct count for small array: a, b, c, d = 4
     assert_eq!(
@@ -119,9 +125,7 @@ fn test_count_min_sketch_frequency() {
         serde_json::json!({"stream": ["apple", "banana", "apple", "cherry", "apple"], "q": "apple"}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE freq = COUNT_MIN_SKETCH(stream, q) SELECT freq;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE freq = COUNT_MIN_SKETCH(stream, q) SELECT freq;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("freq") {
         Some(Value::Integer(v)) => {
@@ -136,7 +140,10 @@ fn test_reservoir_sample_size() {
     let (db, ex) = setup();
     let items: Vec<i64> = (0..100).collect();
     let json_items = serde_json::Value::Array(
-        items.iter().map(|i| serde_json::Value::Number((*i).into())).collect(),
+        items
+            .iter()
+            .map(|i| serde_json::Value::Number((*i).into()))
+            .collect(),
     );
     db.put_doc_ns(
         None,
@@ -150,7 +157,11 @@ fn test_reservoir_sample_size() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sample") {
         Some(Value::Array(arr)) => {
-            assert_eq!(arr.len(), 10, "Reservoir sample should have exactly 10 elements");
+            assert_eq!(
+                arr.len(),
+                10,
+                "Reservoir sample should have exactly 10 elements"
+            );
         }
         other => panic!("Expected Array from RESERVOIR_SAMPLE, got {:?}", other),
     }
@@ -169,9 +180,7 @@ fn test_minhash_same_set() {
         }),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE sim = MINHASH(s1, s2, 128) SELECT sim;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE sim = MINHASH(s1, s2, 128) SELECT sim;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sim") {
         Some(Value::Float(v)) => {
@@ -198,9 +207,7 @@ fn test_minhash_disjoint_sets() {
         }),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE sim = MINHASH(s1, s2, 128) SELECT sim;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE sim = MINHASH(s1, s2, 128) SELECT sim;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sim") {
         Some(Value::Float(v)) => {
@@ -225,12 +232,15 @@ fn test_top_k_frequent() {
         serde_json::json!({"items": ["a", "b", "a", "c", "a", "b"]}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE top = TOP_K_FREQUENT(items, 2) SELECT top;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE top = TOP_K_FREQUENT(items, 2) SELECT top;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("top") {
         Some(Value::Array(arr)) => {
-            assert_eq!(arr.len(), 2, "TOP_K_FREQUENT(items, 2) should return 2 elements");
+            assert_eq!(
+                arr.len(),
+                2,
+                "TOP_K_FREQUENT(items, 2) should return 2 elements"
+            );
             // First element should be "a" with count 3
             if let Value::Object(obj) = &arr[0] {
                 assert_eq!(obj.get("value"), Some(&Value::String("a".to_string())));
@@ -253,9 +263,7 @@ fn test_sketch_percentile() {
         serde_json::json!({"items": [1, 2, 3, 4, 5]}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE p50 = SKETCH_PERCENTILE(items, 0.5) SELECT p50;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE p50 = SKETCH_PERCENTILE(items, 0.5) SELECT p50;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("p50") {
         Some(Value::Float(v)) => {
@@ -279,9 +287,7 @@ fn test_prob_equal_identical_numbers() {
         serde_json::json!({"v1": 5.0, "v2": 5.0, "tol": 1.0}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE p = PROB_EQUAL(v1, v2, tol) SELECT p;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE p = PROB_EQUAL(v1, v2, tol) SELECT p;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("p") {
         Some(Value::Float(v)) => {
@@ -305,9 +311,7 @@ fn test_prob_equal_strings() {
         serde_json::json!({"s1": "hello", "s2": "hello", "tol": 0.1}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE p = PROB_EQUAL(s1, s2, tol) SELECT p;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE p = PROB_EQUAL(s1, s2, tol) SELECT p;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("p") {
         Some(Value::Float(v)) => {
@@ -331,9 +335,7 @@ fn test_random_projection_output_dim() {
         serde_json::json!({"vec": [1.0, 2.0, 3.0, 4.0, 5.0]}),
     )
     .unwrap();
-    let mut p = Parser::new(
-        r#"QUERY t COMPUTE proj = RANDOM_PROJECTION(vec, 3, 42) SELECT proj;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t COMPUTE proj = RANDOM_PROJECTION(vec, 3, 42) SELECT proj;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("proj") {
         Some(Value::Array(arr)) => {
@@ -358,8 +360,7 @@ fn test_reservoir_sample_smaller_than_k() {
         serde_json::json!({"items": [10, 20, 30]}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE s = RESERVOIR_SAMPLE(items, 10, 1) SELECT s;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE s = RESERVOIR_SAMPLE(items, 10, 1) SELECT s;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("s") {
         Some(Value::Array(arr)) => {
@@ -380,8 +381,7 @@ fn test_approx_distinct_alias() {
         serde_json::json!({"items": [1, 2, 2, 3, 3, 3]}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE cnt = APPROX_DISTINCT(items) SELECT cnt;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE cnt = APPROX_DISTINCT(items) SELECT cnt;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(
         r.rows[0].data.get("cnt"),

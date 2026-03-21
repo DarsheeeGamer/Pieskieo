@@ -1,5 +1,8 @@
 /// Integration tests for PQL random/generation/sampling functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -8,7 +11,8 @@ fn make_db(ns: &str) -> (tempfile::TempDir, Arc<PieskieoDb>, Executor) {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some(ns), Uuid::new_v4(), serde_json::json!({})).unwrap();
+    db.put_doc_ns(None, Some(ns), Uuid::new_v4(), serde_json::json!({}))
+        .unwrap();
     (dir, db, ex)
 }
 
@@ -115,7 +119,8 @@ fn test_random_uuid_alias_is_valid() {
 fn test_generate_uuid_unique() {
     // Two calls should produce different UUIDs (with overwhelming probability)
     let (_dir, db, ex) = make_db("t9");
-    db.put_doc_ns(None, Some("t9"), Uuid::new_v4(), serde_json::json!({})).unwrap();
+    db.put_doc_ns(None, Some("t9"), Uuid::new_v4(), serde_json::json!({}))
+        .unwrap();
     let mut p = Parser::new(r#"QUERY t9 COMPUTE u = GENERATE_UUID() SELECT u;"#);
     let result = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(result.rows.len(), 2);
@@ -138,7 +143,11 @@ fn test_random_string_default_charset() {
     match result.rows[0].data.get("s") {
         Some(Value::String(s)) => {
             assert_eq!(s.len(), 10, "expected length 10, got {}", s.len());
-            assert!(s.chars().all(|c| c.is_alphanumeric()), "expected alphanumeric chars, got {}", s);
+            assert!(
+                s.chars().all(|c| c.is_alphanumeric()),
+                "expected alphanumeric chars, got {}",
+                s
+            );
         }
         other => panic!("expected String, got {:?}", other),
     }
@@ -152,7 +161,11 @@ fn test_random_string_hex_charset() {
     match result.rows[0].data.get("s") {
         Some(Value::String(s)) => {
             assert_eq!(s.len(), 8, "expected length 8, got {}", s.len());
-            assert!(s.chars().all(|c| "0123456789abcdef".contains(c)), "expected hex chars, got {}", s);
+            assert!(
+                s.chars().all(|c| "0123456789abcdef".contains(c)),
+                "expected hex chars, got {}",
+                s
+            );
         }
         other => panic!("expected String, got {:?}", other),
     }
@@ -166,7 +179,11 @@ fn test_random_string_numeric_charset() {
     match result.rows[0].data.get("s") {
         Some(Value::String(s)) => {
             assert_eq!(s.len(), 6, "expected length 6, got {}", s.len());
-            assert!(s.chars().all(|c| c.is_ascii_digit()), "expected digits only, got {}", s);
+            assert!(
+                s.chars().all(|c| c.is_ascii_digit()),
+                "expected digits only, got {}",
+                s
+            );
         }
         other => panic!("expected String, got {:?}", other),
     }
@@ -180,7 +197,11 @@ fn test_random_string_alpha_charset() {
     match result.rows[0].data.get("s") {
         Some(Value::String(s)) => {
             assert_eq!(s.len(), 12, "expected length 12, got {}", s.len());
-            assert!(s.chars().all(|c| c.is_alphabetic()), "expected alpha chars, got {}", s);
+            assert!(
+                s.chars().all(|c| c.is_alphabetic()),
+                "expected alpha chars, got {}",
+                s
+            );
         }
         other => panic!("expected String, got {:?}", other),
     }
@@ -195,7 +216,11 @@ fn test_random_normal_returns_float() {
         Some(Value::Float(f)) => {
             // For standard normal, values outside [-10, 10] are astronomically rare
             assert!(f.is_finite(), "expected finite float, got {}", f);
-            assert!(*f > -15.0 && *f < 15.0, "value unreasonably far from mean: {}", f);
+            assert!(
+                *f > -15.0 && *f < 15.0,
+                "value unreasonably far from mean: {}",
+                f
+            );
         }
         other => panic!("expected Float, got {:?}", other),
     }
@@ -269,12 +294,20 @@ fn test_random_permutation_contains_all() {
     match result.rows[0].data.get("perm") {
         Some(Value::Array(arr)) => {
             assert_eq!(arr.len(), 5, "expected 5 elements");
-            let mut nums: Vec<i64> = arr.iter().map(|v| match v {
-                Value::Integer(i) => *i,
-                other => panic!("expected Integer, got {:?}", other),
-            }).collect();
+            let mut nums: Vec<i64> = arr
+                .iter()
+                .map(|v| match v {
+                    Value::Integer(i) => *i,
+                    other => panic!("expected Integer, got {:?}", other),
+                })
+                .collect();
             nums.sort();
-            assert_eq!(nums, vec![0, 1, 2, 3, 4], "expected permutation of 0..5, got {:?}", nums);
+            assert_eq!(
+                nums,
+                vec![0, 1, 2, 3, 4],
+                "expected permutation of 0..5, got {:?}",
+                nums
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -283,7 +316,13 @@ fn test_random_permutation_contains_all() {
 #[test]
 fn test_shuffle_preserves_elements() {
     let (_dir, db, ex) = make_db("t21");
-    db.put_doc_ns(None, Some("t21"), Uuid::new_v4(), serde_json::json!({"arr": [1, 2, 3, 4, 5]})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t21"),
+        Uuid::new_v4(),
+        serde_json::json!({"arr": [1, 2, 3, 4, 5]}),
+    )
+    .unwrap();
     // Use the second doc that has the array field
     let mut p = Parser::new(r#"QUERY t21 WHERE arr != null COMPUTE s = SHUFFLE(arr) SELECT s;"#);
     let result = ex.execute(p.parse().unwrap()).unwrap();
@@ -291,12 +330,19 @@ fn test_shuffle_preserves_elements() {
     match result.rows[0].data.get("s") {
         Some(Value::Array(arr)) => {
             assert_eq!(arr.len(), 5, "shuffle should preserve length");
-            let mut nums: Vec<i64> = arr.iter().map(|v| match v {
-                Value::Integer(i) => *i,
-                other => panic!("expected Integer, got {:?}", other),
-            }).collect();
+            let mut nums: Vec<i64> = arr
+                .iter()
+                .map(|v| match v {
+                    Value::Integer(i) => *i,
+                    other => panic!("expected Integer, got {:?}", other),
+                })
+                .collect();
             nums.sort();
-            assert_eq!(nums, vec![1, 2, 3, 4, 5], "shuffle should preserve elements");
+            assert_eq!(
+                nums,
+                vec![1, 2, 3, 4, 5],
+                "shuffle should preserve elements"
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -305,13 +351,24 @@ fn test_shuffle_preserves_elements() {
 #[test]
 fn test_random_choice_from_array() {
     let (_dir, db, ex) = make_db("t22");
-    db.put_doc_ns(None, Some("t22"), Uuid::new_v4(), serde_json::json!({"items": ["a", "b", "c"]})).unwrap();
-    let mut p = Parser::new(r#"QUERY t22 WHERE items != null COMPUTE c = RANDOM_CHOICE(items) SELECT c;"#);
+    db.put_doc_ns(
+        None,
+        Some("t22"),
+        Uuid::new_v4(),
+        serde_json::json!({"items": ["a", "b", "c"]}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t22 WHERE items != null COMPUTE c = RANDOM_CHOICE(items) SELECT c;"#);
     let result = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!result.rows.is_empty(), "expected at least one row");
     match result.rows[0].data.get("c") {
         Some(Value::String(s)) => {
-            assert!(["a", "b", "c"].contains(&s.as_str()), "expected one of a/b/c, got {}", s);
+            assert!(
+                ["a", "b", "c"].contains(&s.as_str()),
+                "expected one of a/b/c, got {}",
+                s
+            );
         }
         other => panic!("expected String, got {:?}", other),
     }
@@ -320,8 +377,15 @@ fn test_random_choice_from_array() {
 #[test]
 fn test_random_sample_count() {
     let (_dir, db, ex) = make_db("t23");
-    db.put_doc_ns(None, Some("t23"), Uuid::new_v4(), serde_json::json!({"nums": [10, 20, 30, 40, 50]})).unwrap();
-    let mut p = Parser::new(r#"QUERY t23 WHERE nums != null COMPUTE s = RANDOM_SAMPLE(nums, 3) SELECT s;"#);
+    db.put_doc_ns(
+        None,
+        Some("t23"),
+        Uuid::new_v4(),
+        serde_json::json!({"nums": [10, 20, 30, 40, 50]}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t23 WHERE nums != null COMPUTE s = RANDOM_SAMPLE(nums, 3) SELECT s;"#);
     let result = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!result.rows.is_empty(), "expected at least one row");
     match result.rows[0].data.get("s") {
@@ -344,13 +408,26 @@ fn test_random_sample_count() {
 fn test_random_sample_oversized_n() {
     // n >= len -> return full shuffled copy (len elements)
     let (_dir, db, ex) = make_db("t24");
-    db.put_doc_ns(None, Some("t24"), Uuid::new_v4(), serde_json::json!({"nums": [1, 2, 3]})).unwrap();
-    let mut p = Parser::new(r#"QUERY t24 WHERE nums != null COMPUTE s = RANDOM_SAMPLE(nums, 100) SELECT s;"#);
+    db.put_doc_ns(
+        None,
+        Some("t24"),
+        Uuid::new_v4(),
+        serde_json::json!({"nums": [1, 2, 3]}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t24 WHERE nums != null COMPUTE s = RANDOM_SAMPLE(nums, 100) SELECT s;"#,
+    );
     let result = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!result.rows.is_empty(), "expected at least one row");
     match result.rows[0].data.get("s") {
         Some(Value::Array(arr)) => {
-            assert_eq!(arr.len(), 3, "expected full array when n > len, got len={}", arr.len());
+            assert_eq!(
+                arr.len(),
+                3,
+                "expected full array when n > len, got len={}",
+                arr.len()
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -359,13 +436,25 @@ fn test_random_sample_oversized_n() {
 #[test]
 fn test_weighted_choice_picks_from_values() {
     let (_dir, db, ex) = make_db("t25");
-    db.put_doc_ns(None, Some("t25"), Uuid::new_v4(), serde_json::json!({"vals": ["x", "y", "z"], "wts": [1.0, 1.0, 1.0]})).unwrap();
-    let mut p = Parser::new(r#"QUERY t25 WHERE vals != null COMPUTE c = WEIGHTED_CHOICE(vals, wts) SELECT c;"#);
+    db.put_doc_ns(
+        None,
+        Some("t25"),
+        Uuid::new_v4(),
+        serde_json::json!({"vals": ["x", "y", "z"], "wts": [1.0, 1.0, 1.0]}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t25 WHERE vals != null COMPUTE c = WEIGHTED_CHOICE(vals, wts) SELECT c;"#,
+    );
     let result = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!result.rows.is_empty(), "expected at least one row");
     match result.rows[0].data.get("c") {
         Some(Value::String(s)) => {
-            assert!(["x", "y", "z"].contains(&s.as_str()), "expected x/y/z, got {}", s);
+            assert!(
+                ["x", "y", "z"].contains(&s.as_str()),
+                "expected x/y/z, got {}",
+                s
+            );
         }
         other => panic!("expected String, got {:?}", other),
     }
@@ -375,13 +464,25 @@ fn test_weighted_choice_picks_from_values() {
 fn test_weighted_choice_skewed() {
     // weight of 1000 on "always" vs 0 on "never"
     let (_dir, db, ex) = make_db("t26");
-    db.put_doc_ns(None, Some("t26"), Uuid::new_v4(), serde_json::json!({"vals": ["always", "never"], "wts": [1000.0, 0.0]})).unwrap();
-    let mut p = Parser::new(r#"QUERY t26 WHERE vals != null COMPUTE c = WEIGHTED_CHOICE(vals, wts) SELECT c;"#);
+    db.put_doc_ns(
+        None,
+        Some("t26"),
+        Uuid::new_v4(),
+        serde_json::json!({"vals": ["always", "never"], "wts": [1000.0, 0.0]}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t26 WHERE vals != null COMPUTE c = WEIGHTED_CHOICE(vals, wts) SELECT c;"#,
+    );
     let result = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!result.rows.is_empty(), "expected at least one row");
     match result.rows[0].data.get("c") {
         Some(Value::String(s)) => {
-            assert_eq!(s, "always", "expected 'always' with weight 1000 vs 0, got {}", s);
+            assert_eq!(
+                s, "always",
+                "expected 'always' with weight 1000 vs 0, got {}",
+                s
+            );
         }
         other => panic!("expected String, got {:?}", other),
     }
@@ -393,7 +494,8 @@ fn test_seeded_random_deterministic() {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some("t27"), Uuid::new_v4(), serde_json::json!({})).unwrap();
+    db.put_doc_ns(None, Some("t27"), Uuid::new_v4(), serde_json::json!({}))
+        .unwrap();
 
     let mut p1 = Parser::new(r#"QUERY t27 COMPUTE r = SEEDED_RANDOM(42, 0.0, 1.0) SELECT r;"#);
     let mut p2 = Parser::new(r#"QUERY t27 COMPUTE r = SEEDED_RANDOM(42, 0.0, 1.0) SELECT r;"#);
@@ -429,7 +531,8 @@ fn test_seeded_random_different_seeds() {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some("t29"), Uuid::new_v4(), serde_json::json!({})).unwrap();
+    db.put_doc_ns(None, Some("t29"), Uuid::new_v4(), serde_json::json!({}))
+        .unwrap();
 
     let mut p1 = Parser::new(r#"QUERY t29 COMPUTE r = SEEDED_RANDOM(1, 0.0, 1000.0) SELECT r;"#);
     let mut p2 = Parser::new(r#"QUERY t29 COMPUTE r = SEEDED_RANDOM(2, 0.0, 1000.0) SELECT r;"#);

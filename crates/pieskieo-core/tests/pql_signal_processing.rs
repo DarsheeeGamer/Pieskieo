@@ -47,10 +47,7 @@ fn test_signal_power_uniform() {
 #[test]
 fn test_array_power_alias() {
     // ARRAY_POWER is an alias for SIGNAL_POWER
-    let (_dir, _db, ex) = make_db(
-        "ap_alias",
-        serde_json::json!({"arr": [1.0, 1.0, 1.0, 1.0]}),
-    );
+    let (_dir, _db, ex) = make_db("ap_alias", serde_json::json!({"arr": [1.0, 1.0, 1.0, 1.0]}));
     let mut p = Parser::new(r#"QUERY ap_alias COMPUTE r = ARRAY_POWER(arr) SELECT r;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("r") {
@@ -87,10 +84,7 @@ fn test_rms_amplitude_uniform() {
 #[test]
 fn test_rms_value_alias() {
     // RMS_VALUE is an alias for RMS_AMPLITUDE: [3,4] -> sqrt((9+16)/2) = sqrt(12.5)
-    let (_dir, _db, ex) = make_db(
-        "rms_val_alias",
-        serde_json::json!({"arr": [3.0, 4.0]}),
-    );
+    let (_dir, _db, ex) = make_db("rms_val_alias", serde_json::json!({"arr": [3.0, 4.0]}));
     let mut p = Parser::new(r#"QUERY rms_val_alias COMPUTE r = RMS_VALUE(arr) SELECT r;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let expected = 12.5_f64.sqrt();
@@ -150,10 +144,7 @@ fn test_zcr_alias() {
 #[test]
 fn test_apply_hamming_length() {
     // APPLY_HAMMING should return same length as input
-    let (_dir, _db, ex) = make_db(
-        "hamm_len",
-        serde_json::json!({"arr": [1.0, 2.0, 3.0, 4.0]}),
-    );
+    let (_dir, _db, ex) = make_db("hamm_len", serde_json::json!({"arr": [1.0, 2.0, 3.0, 4.0]}));
     let mut p = Parser::new(r#"QUERY hamm_len COMPUTE w = APPLY_HAMMING(arr) SELECT w;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("w") {
@@ -170,10 +161,7 @@ fn test_apply_hamming_length() {
 fn test_apply_hamming_endpoints() {
     // Hamming window endpoints are 0.08 (=0.54-0.46), so first and last elements
     // of a 4-element signal [1,1,1,1] should be ~0.08
-    let (_dir, _db, ex) = make_db(
-        "hamm_ep",
-        serde_json::json!({"arr": [1.0, 1.0, 1.0, 1.0]}),
-    );
+    let (_dir, _db, ex) = make_db("hamm_ep", serde_json::json!({"arr": [1.0, 1.0, 1.0, 1.0]}));
     let mut p = Parser::new(r#"QUERY hamm_ep COMPUTE w = APPLY_HAMMING(arr) SELECT w;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("w") {
@@ -200,10 +188,7 @@ fn test_apply_hamming_endpoints() {
 #[test]
 fn test_apply_hann_length() {
     // APPLY_HANN should return same length as input
-    let (_dir, _db, ex) = make_db(
-        "hann_len",
-        serde_json::json!({"arr": [1.0, 2.0, 3.0, 4.0]}),
-    );
+    let (_dir, _db, ex) = make_db("hann_len", serde_json::json!({"arr": [1.0, 2.0, 3.0, 4.0]}));
     let mut p = Parser::new(r#"QUERY hann_len COMPUTE w = APPLY_HANN(arr) SELECT w;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("w") {
@@ -321,9 +306,7 @@ fn test_xcorr_is_cross_correlate() {
         "xcorr_alias_check",
         serde_json::json!({"s1": [1.0, 2.0], "s2": [3.0, 4.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY xcorr_alias_check COMPUTE c = XCORR(s1, s2) SELECT c;"#,
-    );
+    let mut p = Parser::new(r#"QUERY xcorr_alias_check COMPUTE c = XCORR(s1, s2) SELECT c;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("c") {
         Some(Value::Array(a)) => assert_eq!(
@@ -401,9 +384,7 @@ fn test_dominant_freq_idx_peak_at_2() {
         "dfi_peak",
         serde_json::json!({"mags": [0.0, 1.0, 5.0, 2.0, 0.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY dfi_peak COMPUTE idx = DOMINANT_FREQ_IDX(mags) SELECT idx;"#,
-    );
+    let mut p = Parser::new(r#"QUERY dfi_peak COMPUTE idx = DOMINANT_FREQ_IDX(mags) SELECT idx;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("idx") {
         Some(Value::Integer(i)) => assert_eq!(
@@ -418,20 +399,13 @@ fn test_dominant_freq_idx_peak_at_2() {
 #[test]
 fn test_argmax_freq_alias() {
     // ARGMAX_FREQ is an alias for DOMINANT_FREQ_IDX
-    let (_dir, _db, ex) = make_db(
-        "argmax_alias",
-        serde_json::json!({"mags": [3.0, 7.0, 1.0]}),
-    );
-    let mut p = Parser::new(
-        r#"QUERY argmax_alias COMPUTE idx = ARGMAX_FREQ(mags) SELECT idx;"#,
-    );
+    let (_dir, _db, ex) = make_db("argmax_alias", serde_json::json!({"mags": [3.0, 7.0, 1.0]}));
+    let mut p = Parser::new(r#"QUERY argmax_alias COMPUTE idx = ARGMAX_FREQ(mags) SELECT idx;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("idx") {
-        Some(Value::Integer(i)) => assert_eq!(
-            *i, 1,
-            "ARGMAX_FREQ([3,7,1]) should return 1, got {}",
-            i
-        ),
+        Some(Value::Integer(i)) => {
+            assert_eq!(*i, 1, "ARGMAX_FREQ([3,7,1]) should return 1, got {}", i)
+        }
         other => panic!("expected Integer, got {:?}", other),
     }
 }
@@ -468,7 +442,11 @@ fn test_sg_smooth_linear_signal() {
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("s") {
         Some(Value::Array(a)) => {
-            assert_eq!(a.len(), 7, "SG_SMOOTH output length should match input length");
+            assert_eq!(
+                a.len(),
+                7,
+                "SG_SMOOTH output length should match input length"
+            );
             // For a linear signal, the Savitzky-Golay filter should preserve it exactly
             // at interior points (polynomial of degree 2 fits line exactly)
             let mid = as_f64(&a[3]); // index 3 -> value should be ~4.0
@@ -487,15 +465,15 @@ fn test_sg_smooth_linear_signal() {
 #[test]
 fn test_fft_magnitudes_dc() {
     // For constant signal [1,1,1,1], DC magnitude should be ~4.0
-    let (_dir, _db, ex) = make_db(
-        "fft_dc",
-        serde_json::json!({"arr": [1.0, 1.0, 1.0, 1.0]}),
-    );
+    let (_dir, _db, ex) = make_db("fft_dc", serde_json::json!({"arr": [1.0, 1.0, 1.0, 1.0]}));
     let mut p = Parser::new(r#"QUERY fft_dc COMPUTE mags = FFT_MAGNITUDES(arr) SELECT mags;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("mags") {
         Some(Value::Array(a)) => {
-            assert!(!a.is_empty(), "FFT_MAGNITUDES should return non-empty array");
+            assert!(
+                !a.is_empty(),
+                "FFT_MAGNITUDES should return non-empty array"
+            );
             let dc = as_f64(&a[0]);
             assert!(
                 (dc - 4.0).abs() < 1e-6,
@@ -529,8 +507,14 @@ fn test_fft_magnitudes_agrees_with_dft_dc() {
     };
     // FFT_MAGNITUDES is one-sided (N/2+1 bins), DFT_MAGNITUDES is full-spectrum (N bins)
     // Both should return arrays with at least 1 element
-    assert!(!a.is_empty(), "FFT_MAGNITUDES should return non-empty array");
-    assert!(!b.is_empty(), "DFT_MAGNITUDES should return non-empty array");
+    assert!(
+        !a.is_empty(),
+        "FFT_MAGNITUDES should return non-empty array"
+    );
+    assert!(
+        !b.is_empty(),
+        "DFT_MAGNITUDES should return non-empty array"
+    );
     // DC component (bin 0) should match
     assert!(
         (as_f64(&a[0]) - as_f64(&b[0])).abs() < 1e-9,
@@ -562,13 +546,9 @@ fn test_dominant_freq_returns_float() {
 #[test]
 fn test_dominant_freq_dc_component() {
     // When DC (bin 0) is dominant, frequency should be 0 Hz
-    let (_dir, _db, ex) = make_db(
-        "dom_freq_dc",
-        serde_json::json!({"mags": [10.0, 1.0, 0.5]}),
-    );
-    let mut p = Parser::new(
-        r#"QUERY dom_freq_dc COMPUTE f = DOMINANT_FREQ(mags, 1000.0, 6) SELECT f;"#,
-    );
+    let (_dir, _db, ex) = make_db("dom_freq_dc", serde_json::json!({"mags": [10.0, 1.0, 0.5]}));
+    let mut p =
+        Parser::new(r#"QUERY dom_freq_dc COMPUTE f = DOMINANT_FREQ(mags, 1000.0, 6) SELECT f;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("f") {
         Some(Value::Float(f)) => assert!(
@@ -616,9 +596,7 @@ fn test_normalize_signal_alias() {
         "norm_sig_alias",
         serde_json::json!({"arr": [-4.0, 2.0, 0.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY norm_sig_alias COMPUTE n = NORMALIZE_SIGNAL(arr) SELECT n;"#,
-    );
+    let mut p = Parser::new(r#"QUERY norm_sig_alias COMPUTE n = NORMALIZE_SIGNAL(arr) SELECT n;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("n") {
         Some(Value::Array(a)) => {
@@ -648,9 +626,8 @@ fn test_spectral_centroid_returns_float() {
         "sc_float",
         serde_json::json!({"mags": [0.0, 2.0, 4.0, 2.0, 0.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY sc_float COMPUTE c = SPECTRAL_CENTROID(mags, 44100.0) SELECT c;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY sc_float COMPUTE c = SPECTRAL_CENTROID(mags, 44100.0) SELECT c;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("c") {
         Some(Value::Float(_)) => {} // just verify type
@@ -661,10 +638,7 @@ fn test_spectral_centroid_returns_float() {
 #[test]
 fn test_freq_centroid_alias() {
     // FREQ_CENTROID is an alias for SPECTRAL_CENTROID and should return same result
-    let (_dir, _db, ex) = make_db(
-        "fc_alias",
-        serde_json::json!({"mags": [1.0, 3.0, 1.0]}),
-    );
+    let (_dir, _db, ex) = make_db("fc_alias", serde_json::json!({"mags": [1.0, 3.0, 1.0]}));
     let mut p = Parser::new(
         r#"QUERY fc_alias COMPUTE a = SPECTRAL_CENTROID(mags, 8000.0) COMPUTE b = FREQ_CENTROID(mags, 8000.0) SELECT a, b;"#,
     );
@@ -690,13 +664,8 @@ fn test_freq_centroid_alias() {
 #[test]
 fn test_energy_ratio_full_band() {
     // All energy in the full range [0..len) => ratio = 1.0
-    let (_dir, _db, ex) = make_db(
-        "er_full",
-        serde_json::json!({"mags": [1.0, 2.0, 3.0, 4.0]}),
-    );
-    let mut p = Parser::new(
-        r#"QUERY er_full COMPUTE r = ENERGY_RATIO(mags, 0, 4) SELECT r;"#,
-    );
+    let (_dir, _db, ex) = make_db("er_full", serde_json::json!({"mags": [1.0, 2.0, 3.0, 4.0]}));
+    let mut p = Parser::new(r#"QUERY er_full COMPUTE r = ENERGY_RATIO(mags, 0, 4) SELECT r;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("r") {
         Some(Value::Float(f)) => assert!(
@@ -716,9 +685,8 @@ fn test_band_energy_ratio_alias() {
         serde_json::json!({"mags": [0.0, 0.0, 5.0, 0.0]}),
     );
     // All energy at index 2, range [2..3) => ratio = 1.0
-    let mut p = Parser::new(
-        r#"QUERY ber_alias COMPUTE r = BAND_ENERGY_RATIO(mags, 2, 3) SELECT r;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY ber_alias COMPUTE r = BAND_ENERGY_RATIO(mags, 2, 3) SELECT r;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("r") {
         Some(Value::Float(f)) => assert!(
@@ -735,10 +703,7 @@ fn test_band_energy_ratio_alias() {
 #[test]
 fn test_rms_amplitude_single_element() {
     // RMS_AMPLITUDE([3.0]) = sqrt(9/1) = 3.0
-    let (_dir, _db, ex) = make_db(
-        "rms_single",
-        serde_json::json!({"arr": [3.0]}),
-    );
+    let (_dir, _db, ex) = make_db("rms_single", serde_json::json!({"arr": [3.0]}));
     let mut p = Parser::new(r#"QUERY rms_single COMPUTE r = RMS_AMPLITUDE(arr) SELECT r;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("r") {
@@ -754,10 +719,7 @@ fn test_rms_amplitude_single_element() {
 #[test]
 fn test_apply_hamming_empty() {
     // APPLY_HAMMING on empty array should return empty array
-    let (_dir, _db, ex) = make_db(
-        "hamm_empty",
-        serde_json::json!({"arr": []}),
-    );
+    let (_dir, _db, ex) = make_db("hamm_empty", serde_json::json!({"arr": []}));
     let mut p = Parser::new(r#"QUERY hamm_empty COMPUTE w = APPLY_HAMMING(arr) SELECT w;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("w") {
@@ -769,10 +731,7 @@ fn test_apply_hamming_empty() {
 #[test]
 fn test_apply_hann_empty() {
     // APPLY_HANN on empty array should return empty array
-    let (_dir, _db, ex) = make_db(
-        "hann_empty",
-        serde_json::json!({"arr": []}),
-    );
+    let (_dir, _db, ex) = make_db("hann_empty", serde_json::json!({"arr": []}));
     let mut p = Parser::new(r#"QUERY hann_empty COMPUTE w = APPLY_HANN(arr) SELECT w;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("w") {
@@ -784,10 +743,7 @@ fn test_apply_hann_empty() {
 #[test]
 fn test_signal_entropy_zero_array() {
     // SIGNAL_ENTROPY of all-zero array should be 0.0
-    let (_dir, _db, ex) = make_db(
-        "ent_zeros",
-        serde_json::json!({"arr": [0.0, 0.0, 0.0]}),
-    );
+    let (_dir, _db, ex) = make_db("ent_zeros", serde_json::json!({"arr": [0.0, 0.0, 0.0]}));
     let mut p = Parser::new(r#"QUERY ent_zeros COMPUTE e = SIGNAL_ENTROPY(arr) SELECT e;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("e") {
@@ -803,10 +759,7 @@ fn test_signal_entropy_zero_array() {
 #[test]
 fn test_signal_normalize_negative_values() {
     // SIGNAL_NORMALIZE([-6, 3]) -> max_abs=6, so [-1.0, 0.5]
-    let (_dir, _db, ex) = make_db(
-        "sig_norm_neg",
-        serde_json::json!({"arr": [-6.0, 3.0]}),
-    );
+    let (_dir, _db, ex) = make_db("sig_norm_neg", serde_json::json!({"arr": [-6.0, 3.0]}));
     let mut p = Parser::new(r#"QUERY sig_norm_neg COMPUTE n = SIGNAL_NORMALIZE(arr) SELECT n;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("n") {
@@ -834,9 +787,7 @@ fn test_dominant_freq_idx_first_element() {
         "dfi_first",
         serde_json::json!({"mags": [5.0, 1.0, 2.0, 0.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY dfi_first COMPUTE idx = DOMINANT_FREQ_IDX(mags) SELECT idx;"#,
-    );
+    let mut p = Parser::new(r#"QUERY dfi_first COMPUTE idx = DOMINANT_FREQ_IDX(mags) SELECT idx;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("idx") {
         Some(Value::Integer(i)) => assert_eq!(
@@ -855,9 +806,8 @@ fn test_energy_ratio_empty_band() {
         "er_empty_band",
         serde_json::json!({"mags": [1.0, 2.0, 3.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY er_empty_band COMPUTE r = ENERGY_RATIO(mags, 1, 1) SELECT r;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY er_empty_band COMPUTE r = ENERGY_RATIO(mags, 1, 1) SELECT r;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("r") {
         Some(Value::Float(f)) => assert!(
@@ -872,10 +822,7 @@ fn test_energy_ratio_empty_band() {
 #[test]
 fn test_savitzky_golay_short_passthrough() {
     // Arrays shorter than 5 elements should be returned unchanged
-    let (_dir, _db, ex) = make_db(
-        "sg_short",
-        serde_json::json!({"arr": [1.0, 2.0, 3.0]}),
-    );
+    let (_dir, _db, ex) = make_db("sg_short", serde_json::json!({"arr": [1.0, 2.0, 3.0]}));
     let mut p = Parser::new(r#"QUERY sg_short COMPUTE s = SAVITZKY_GOLAY(arr) SELECT s;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("s") {

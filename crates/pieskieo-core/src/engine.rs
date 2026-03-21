@@ -68,9 +68,18 @@ pub struct SchemaDef {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ConstraintDef {
-    Unique { name: String, fields: Vec<String> },
-    PrimaryKey { name: String, fields: Vec<String> },
-    Check { name: String, condition: crate::pql::ast::Condition },
+    Unique {
+        name: String,
+        fields: Vec<String>,
+    },
+    PrimaryKey {
+        name: String,
+        fields: Vec<String>,
+    },
+    Check {
+        name: String,
+        condition: crate::pql::ast::Condition,
+    },
     ForeignKey(ForeignKeyDef),
 }
 
@@ -1255,7 +1264,13 @@ impl PieskieoDb {
         if !self.owns(&src) {
             return Err(PieskieoError::WrongShard);
         }
-        let payload = bincode::serialize(&crate::graph::Edge { src, dst, weight, edge_type: None, properties: None })?;
+        let payload = bincode::serialize(&crate::graph::Edge {
+            src,
+            dst,
+            weight,
+            edge_type: None,
+            properties: None,
+        })?;
         self.append_record(&RecordKind::Put {
             family: DataFamily::Graph,
             key: src,
@@ -1404,9 +1419,21 @@ impl PieskieoDb {
                 .ef_construction
                 .load(std::sync::atomic::Ordering::SeqCst);
         }
+        let data = self.data.read();
+        let docs = data
+            .docs
+            .values()
+            .map(|collections| collections.values().map(|rows| rows.len()).sum::<usize>())
+            .sum();
+        let rows = data
+            .rows
+            .values()
+            .map(|tables| tables.values().map(|entries| entries.len()).sum::<usize>())
+            .sum();
+        drop(data);
         MetricsSnapshot {
-            docs: self.data.read().docs.values().map(|m| m.len()).sum(),
-            rows: self.data.read().rows.values().map(|m| m.len()).sum(),
+            docs,
+            rows,
             vectors,
             vector_tombstones: tomb,
             hnsw_ready,
@@ -2615,7 +2642,8 @@ impl PieskieoDb {
     pub fn has_row_schema(&self, ns: Option<&str>, name: &str) -> bool {
         let ns_key = Self::ns(ns);
         let guard = self.data.read();
-        guard.row_schema
+        guard
+            .row_schema
             .get(&ns_key)
             .map(|m| m.contains_key(name))
             .unwrap_or(false)
@@ -2649,20 +2677,26 @@ impl PieskieoDb {
                         crate::pql::ast::DataType::Bytes => "bytes",
                         crate::pql::ast::DataType::Serial => "integer",
                         crate::pql::ast::DataType::BigSerial => "bigint",
-                    }.to_string();
-                    schema.fields.insert(col.name.clone(), SchemaField {
-                        required: !col.nullable,
-                        unique: col.primary_key || col.unique,
-                        r#type: Some(type_str),
-                        default: col.default.map(|l| match l {
-                            crate::pql::ast::Literal::Null => serde_json::Value::Null,
-                            crate::pql::ast::Literal::Bool(b) => serde_json::Value::Bool(b),
-                            crate::pql::ast::Literal::Integer(i) => serde_json::json!(i),
-                            crate::pql::ast::Literal::Float(f) => serde_json::json!(f),
-                            crate::pql::ast::Literal::String(s) => serde_json::Value::String(s),
-                            crate::pql::ast::Literal::Uuid(u) => serde_json::Value::String(u.to_string()),
-                        }),
-                    });
+                    }
+                    .to_string();
+                    schema.fields.insert(
+                        col.name.clone(),
+                        SchemaField {
+                            required: !col.nullable,
+                            unique: col.primary_key || col.unique,
+                            r#type: Some(type_str),
+                            default: col.default.map(|l| match l {
+                                crate::pql::ast::Literal::Null => serde_json::Value::Null,
+                                crate::pql::ast::Literal::Bool(b) => serde_json::Value::Bool(b),
+                                crate::pql::ast::Literal::Integer(i) => serde_json::json!(i),
+                                crate::pql::ast::Literal::Float(f) => serde_json::json!(f),
+                                crate::pql::ast::Literal::String(s) => serde_json::Value::String(s),
+                                crate::pql::ast::Literal::Uuid(u) => {
+                                    serde_json::Value::String(u.to_string())
+                                }
+                            }),
+                        },
+                    );
                 }
                 AlterTableOperation::DropColumn { name: col_name } => {
                     schema.fields.remove(&col_name);
@@ -2678,7 +2712,10 @@ impl PieskieoDb {
                         let _ = f;
                     }
                 }
-                AlterTableOperation::SetDefault { name: col_name, default: _expr } => {
+                AlterTableOperation::SetDefault {
+                    name: col_name,
+                    default: _expr,
+                } => {
                     if let Some(f) = schema.fields.get_mut(&col_name) {
                         f.default = None; // simplified: can't eval expr here
                         let _ = f;
@@ -2703,22 +2740,42 @@ impl PieskieoDb {
                                 fields,
                             }
                         }
-                        crate::pql::ast::Constraint::Check { name: cn, condition } => {
-                            ConstraintDef::Check {
-                                name: cn.unwrap_or_else(|| "check".to_string()),
-                                condition,
-                            }
-                        }
-                        crate::pql::ast::Constraint::ForeignKey { name: cn, fields, ref_table, ref_fields, on_delete, on_update } => {
+                        crate::pql::ast::Constraint::Check {
+                            name: cn,
+                            condition,
+                        } => ConstraintDef::Check {
+                            name: cn.unwrap_or_else(|| "check".to_string()),
+                            condition,
+                        },
+                        crate::pql::ast::Constraint::ForeignKey {
+                            name: cn,
+                            fields,
+                            ref_table,
+                            ref_fields,
+                            on_delete,
+                            on_update,
+                        } => {
                             let map_action = |a: crate::pql::ast::ReferentialAction| match a {
-                                crate::pql::ast::ReferentialAction::NoAction => ReferentialAction::NoAction,
-                                crate::pql::ast::ReferentialAction::Restrict => ReferentialAction::Restrict,
-                                crate::pql::ast::ReferentialAction::Cascade => ReferentialAction::Cascade,
-                                crate::pql::ast::ReferentialAction::SetNull => ReferentialAction::SetNull,
-                                crate::pql::ast::ReferentialAction::SetDefault => ReferentialAction::SetDefault,
+                                crate::pql::ast::ReferentialAction::NoAction => {
+                                    ReferentialAction::NoAction
+                                }
+                                crate::pql::ast::ReferentialAction::Restrict => {
+                                    ReferentialAction::Restrict
+                                }
+                                crate::pql::ast::ReferentialAction::Cascade => {
+                                    ReferentialAction::Cascade
+                                }
+                                crate::pql::ast::ReferentialAction::SetNull => {
+                                    ReferentialAction::SetNull
+                                }
+                                crate::pql::ast::ReferentialAction::SetDefault => {
+                                    ReferentialAction::SetDefault
+                                }
                             };
                             ConstraintDef::ForeignKey(ForeignKeyDef {
-                                name: cn.unwrap_or_else(|| format!("fk_{}_{}", ref_table, fields.join("_"))),
+                                name: cn.unwrap_or_else(|| {
+                                    format!("fk_{}_{}", ref_table, fields.join("_"))
+                                }),
                                 columns: fields,
                                 referenced_table: ref_table,
                                 referenced_columns: ref_fields,
@@ -2789,24 +2846,37 @@ impl PieskieoDb {
         // Try row schema first, then doc schema
         if let Some(ns_map) = guard.row_schema.get_mut(&ns_key) {
             if let Some(schema) = ns_map.get_mut(on) {
-                schema.indexes.push(IndexDef { name: name.to_string(), fields, index_type });
+                schema.indexes.push(IndexDef {
+                    name: name.to_string(),
+                    fields,
+                    index_type,
+                });
                 return Ok(());
             }
         }
         if let Some(ns_map) = guard.doc_schema.get_mut(&ns_key) {
             if let Some(schema) = ns_map.get_mut(on) {
-                schema.indexes.push(IndexDef { name: name.to_string(), fields, index_type });
+                schema.indexes.push(IndexDef {
+                    name: name.to_string(),
+                    fields,
+                    index_type,
+                });
                 return Ok(());
             }
         }
         // Collection doesn't exist yet - create schema entry
-        guard.doc_schema
+        guard
+            .doc_schema
             .entry(ns_key)
             .or_default()
             .entry(on.to_string())
             .or_default()
             .indexes
-            .push(IndexDef { name: name.to_string(), fields, index_type });
+            .push(IndexDef {
+                name: name.to_string(),
+                fields,
+                index_type,
+            });
         Ok(())
     }
 
@@ -2867,12 +2937,21 @@ impl PieskieoDb {
     pub fn get_schema_fields(&self, ns: Option<&str>, name: &str) -> Vec<(String, String)> {
         let ns_key = Self::ns(ns);
         let guard = self.data.read();
-        let schema = guard.row_schema.get(&ns_key)
+        let schema = guard
+            .row_schema
+            .get(&ns_key)
             .and_then(|m| m.get(name))
             .or_else(|| guard.doc_schema.get(&ns_key).and_then(|m| m.get(name)));
         match schema {
-            Some(s) => s.fields.iter()
-                .map(|(k, v)| (k.clone(), v.r#type.clone().unwrap_or_else(|| "any".to_string())))
+            Some(s) => s
+                .fields
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        v.r#type.clone().unwrap_or_else(|| "any".to_string()),
+                    )
+                })
                 .collect(),
             None => Vec::new(),
         }
@@ -2882,7 +2961,10 @@ impl PieskieoDb {
     pub fn create_view(&self, name: &str, stmt: &crate::pql::ast::Statement) -> Result<()> {
         let mut json = serde_json::to_value(stmt)?;
         if let Some(obj) = json.as_object_mut() {
-            obj.insert("__view_name__".to_string(), serde_json::Value::String(name.to_string()));
+            obj.insert(
+                "__view_name__".to_string(),
+                serde_json::Value::String(name.to_string()),
+            );
         }
         let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
         self.put_doc_ns(Some("__system__"), Some("__views__"), id, json)?;
@@ -2920,7 +3002,11 @@ impl PieskieoDb {
         if_not_exists: bool,
     ) -> Result<()> {
         let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
-        if if_not_exists && self.get_doc_ns(Some("__system__"), Some("__sequences__"), &id).is_some() {
+        if if_not_exists
+            && self
+                .get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
+                .is_some()
+        {
             return Ok(());
         }
         let json = serde_json::json!({
@@ -2939,7 +3025,11 @@ impl PieskieoDb {
     /// Drop a sequence.
     pub fn drop_sequence(&self, name: &str, if_exists: bool) -> Result<()> {
         let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
-        if if_exists && self.get_doc_ns(Some("__system__"), Some("__sequences__"), &id).is_none() {
+        if if_exists
+            && self
+                .get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
+                .is_none()
+        {
             return Ok(());
         }
         self.delete_doc_ns(Some("__system__"), Some("__sequences__"), &id)?;
@@ -2948,19 +3038,38 @@ impl PieskieoDb {
 
     /// List all sequence names.
     pub fn list_sequences(&self) -> Vec<String> {
-        self.query_docs_ns(Some("__system__"), Some("__sequences__"), &std::collections::HashMap::new(), 1000, 0)
-            .into_iter()
-            .filter_map(|(_, json)| json.get("__seq_name__").and_then(|v| v.as_str()).map(|s| s.to_string()))
-            .collect()
+        self.query_docs_ns(
+            Some("__system__"),
+            Some("__sequences__"),
+            &std::collections::HashMap::new(),
+            1000,
+            0,
+        )
+        .into_iter()
+        .filter_map(|(_, json)| {
+            json.get("__seq_name__")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .collect()
     }
 
     /// Advance a sequence and return next value.
     pub fn nextval(&self, name: &str) -> Result<i64> {
         let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
-        let json = self.get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
-            .ok_or_else(|| crate::error::PieskieoError::Internal(format!("sequence '{}' not found", name)))?;
-        let current = json.get("current").and_then(|v: &serde_json::Value| v.as_i64()).unwrap_or(1);
-        let increment = json.get("increment").and_then(|v: &serde_json::Value| v.as_i64()).unwrap_or(1);
+        let json = self
+            .get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
+            .ok_or_else(|| {
+                crate::error::PieskieoError::Internal(format!("sequence '{}' not found", name))
+            })?;
+        let current = json
+            .get("current")
+            .and_then(|v: &serde_json::Value| v.as_i64())
+            .unwrap_or(1);
+        let increment = json
+            .get("increment")
+            .and_then(|v: &serde_json::Value| v.as_i64())
+            .unwrap_or(1);
         let next = current + increment;
         let mut updated = json;
         if let Some(obj) = updated.as_object_mut() {
@@ -2973,16 +3082,25 @@ impl PieskieoDb {
     /// Get current value of a sequence without advancing it.
     pub fn currval(&self, name: &str) -> Result<i64> {
         let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
-        let json = self.get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
-            .ok_or_else(|| crate::error::PieskieoError::Internal(format!("sequence '{}' not found", name)))?;
-        Ok(json.get("current").and_then(|v: &serde_json::Value| v.as_i64()).unwrap_or(1))
+        let json = self
+            .get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
+            .ok_or_else(|| {
+                crate::error::PieskieoError::Internal(format!("sequence '{}' not found", name))
+            })?;
+        Ok(json
+            .get("current")
+            .and_then(|v: &serde_json::Value| v.as_i64())
+            .unwrap_or(1))
     }
 
     /// Set sequence value.
     pub fn setval(&self, name: &str, value: i64) -> Result<i64> {
         let id = Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes());
-        let json = self.get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
-            .ok_or_else(|| crate::error::PieskieoError::Internal(format!("sequence '{}' not found", name)))?;
+        let json = self
+            .get_doc_ns(Some("__system__"), Some("__sequences__"), &id)
+            .ok_or_else(|| {
+                crate::error::PieskieoError::Internal(format!("sequence '{}' not found", name))
+            })?;
         let mut updated = json;
         if let Some(obj) = updated.as_object_mut() {
             obj.insert("current".to_string(), serde_json::json!(value));
@@ -2992,8 +3110,15 @@ impl PieskieoDb {
     }
 
     /// Add a typed edge between two nodes.
-    pub fn add_typed_edge(&self, src: Uuid, dst: Uuid, weight: f32, edge_type: String) -> Result<()> {
-        self.graph.add_typed_edge(src, dst, weight, Some(edge_type), None);
+    pub fn add_typed_edge(
+        &self,
+        src: Uuid,
+        dst: Uuid,
+        weight: f32,
+        edge_type: String,
+    ) -> Result<()> {
+        self.graph
+            .add_typed_edge(src, dst, weight, Some(edge_type), None);
         Ok(())
     }
 
@@ -3043,7 +3168,9 @@ impl PieskieoDb {
     pub fn bm25_scores_doc(&self, ns: Option<&str>, col: &str, query: &str) -> Vec<(Uuid, f64)> {
         let ns_key = Self::ns(ns);
         let guard = self.data.read();
-        let docs: Vec<(Uuid, serde_json::Value)> = guard.docs.get(&ns_key)
+        let docs: Vec<(Uuid, serde_json::Value)> = guard
+            .docs
+            .get(&ns_key)
             .and_then(|m| m.get(col))
             .map(|m| m.iter().map(|(id, v)| (*id, v.clone())).collect())
             .unwrap_or_default();
@@ -3055,7 +3182,9 @@ impl PieskieoDb {
     pub fn bm25_scores_row(&self, ns: Option<&str>, tbl: &str, query: &str) -> Vec<(Uuid, f64)> {
         let ns_key = Self::ns(ns);
         let guard = self.data.read();
-        let rows: Vec<(Uuid, serde_json::Value)> = guard.rows.get(&ns_key)
+        let rows: Vec<(Uuid, serde_json::Value)> = guard
+            .rows
+            .get(&ns_key)
             .and_then(|m| m.get(tbl))
             .map(|m| m.iter().map(|(id, v)| (*id, v.clone())).collect())
             .unwrap_or_default();
@@ -3073,10 +3202,13 @@ fn bm25_scores_impl(docs: &[(Uuid, serde_json::Value)], query: &str) -> Vec<(Uui
     }
 
     // Build term frequencies and doc lengths
-    let tokenized: Vec<Vec<String>> = docs.iter().map(|(_, json)| {
-        let text = json.to_string().to_lowercase();
-        text.split_whitespace().map(|s| s.to_string()).collect()
-    }).collect();
+    let tokenized: Vec<Vec<String>> = docs
+        .iter()
+        .map(|(_, json)| {
+            let text = json.to_string().to_lowercase();
+            text.split_whitespace().map(|s| s.to_string()).collect()
+        })
+        .collect();
 
     let avg_len = if tokenized.is_empty() {
         1.0_f64
@@ -3092,9 +3224,17 @@ fn bm25_scores_impl(docs: &[(Uuid, serde_json::Value)], query: &str) -> Vec<(Uui
         let doc_len = doc_terms.len() as f64;
         let mut score = 0.0_f64;
         for term in &query_terms {
-            let tf = doc_terms.iter().filter(|t| t.as_str() == term.as_str()).count() as f64;
-            let df = tokenized.iter().filter(|d| d.iter().any(|t| t.as_str() == term.as_str())).count() as f64;
-            if df == 0.0 || tf == 0.0 { continue; }
+            let tf = doc_terms
+                .iter()
+                .filter(|t| t.as_str() == term.as_str())
+                .count() as f64;
+            let df = tokenized
+                .iter()
+                .filter(|d| d.iter().any(|t| t.as_str() == term.as_str()))
+                .count() as f64;
+            if df == 0.0 || tf == 0.0 {
+                continue;
+            }
             let idf = ((n - df + 0.5) / (df + 0.5) + 1.0).ln();
             let tf_norm = (tf * (k1 + 1.0)) / (tf + k1 * (1.0 - b + b * doc_len / avg_len));
             score += idf * tf_norm;
@@ -3330,6 +3470,48 @@ mod tests {
         };
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].1["score"], 5);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn metrics_count_documents_and_rows_not_collections() -> Result<()> {
+        let dir = tempdir().unwrap();
+        let db = PieskieoDb::open(dir.path())?;
+
+        db.put_doc_ns(
+            Some("default"),
+            Some("people"),
+            Uuid::new_v4(),
+            serde_json::json!({"name": "alice"}),
+        )?;
+        db.put_doc_ns(
+            Some("default"),
+            Some("people"),
+            Uuid::new_v4(),
+            serde_json::json!({"name": "bob"}),
+        )?;
+        db.put_doc_ns(
+            Some("default"),
+            Some("cities"),
+            Uuid::new_v4(),
+            serde_json::json!({"name": "sf"}),
+        )?;
+        db.put_row_ns(
+            Some("analytics"),
+            Some("events"),
+            Uuid::new_v4(),
+            &serde_json::json!({"kind": "click"}),
+        )?;
+        db.put_row_ns(
+            Some("analytics"),
+            Some("events"),
+            Uuid::new_v4(),
+            &serde_json::json!({"kind": "view"}),
+        )?;
+
+        let metrics = db.metrics();
+        assert_eq!(metrics.docs, 3);
+        assert_eq!(metrics.rows, 2);
         Ok(())
     }
 

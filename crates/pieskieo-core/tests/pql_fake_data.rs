@@ -1,5 +1,8 @@
 /// Integration tests for PQL synthetic/fake data generation functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -8,7 +11,8 @@ fn setup(ns: &str) -> (tempfile::TempDir, Arc<PieskieoDb>, Executor) {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some(ns), Uuid::new_v4(), serde_json::json!({})).unwrap();
+    db.put_doc_ns(None, Some(ns), Uuid::new_v4(), serde_json::json!({}))
+        .unwrap();
     (dir, db, ex)
 }
 
@@ -28,7 +32,10 @@ fn run_str(ex: &Executor, ns: &str, expr: &str) -> String {
 fn test_fake_first_name_non_empty() {
     let (_dir, _db, ex) = setup("fn1");
     let s = run_str(&ex, "fn1", "FAKE_FIRST_NAME(42)");
-    assert!(!s.is_empty(), "FAKE_FIRST_NAME should return non-empty string");
+    assert!(
+        !s.is_empty(),
+        "FAKE_FIRST_NAME should return non-empty string"
+    );
 }
 
 #[test]
@@ -53,7 +60,10 @@ fn test_gen_first_name_alias() {
 fn test_fake_last_name_non_empty() {
     let (_dir, _db, ex) = setup("ln1");
     let s = run_str(&ex, "ln1", "FAKE_LAST_NAME(99)");
-    assert!(!s.is_empty(), "FAKE_LAST_NAME should return non-empty string");
+    assert!(
+        !s.is_empty(),
+        "FAKE_LAST_NAME should return non-empty string"
+    );
 }
 
 #[test]
@@ -70,7 +80,11 @@ fn test_gen_last_name_alias() {
 fn test_fake_full_name_has_space() {
     let (_dir, _db, ex) = setup("fn4");
     let s = run_str(&ex, "fn4", "FAKE_FULL_NAME(1)");
-    assert!(s.contains(' '), "FAKE_FULL_NAME should contain a space, got: {}", s);
+    assert!(
+        s.contains(' '),
+        "FAKE_FULL_NAME should contain a space, got: {}",
+        s
+    );
 }
 
 #[test]
@@ -105,8 +119,15 @@ fn test_gen_email_alias() {
 fn test_fake_username_non_empty_with_digits() {
     let (_dir, _db, ex) = setup("un1");
     let s = run_str(&ex, "un1", "FAKE_USERNAME(55)");
-    assert!(!s.is_empty(), "FAKE_USERNAME should return non-empty string");
-    assert!(s.chars().any(|c| c.is_ascii_digit()), "FAKE_USERNAME should contain digits: {}", s);
+    assert!(
+        !s.is_empty(),
+        "FAKE_USERNAME should return non-empty string"
+    );
+    assert!(
+        s.chars().any(|c| c.is_ascii_digit()),
+        "FAKE_USERNAME should contain digits: {}",
+        s
+    );
 }
 
 #[test]
@@ -123,14 +144,24 @@ fn test_gen_username_alias() {
 fn test_fake_password_correct_length() {
     let (_dir, _db, ex) = setup("pw1");
     let s = run_str(&ex, "pw1", "FAKE_PASSWORD(33, 16)");
-    assert_eq!(s.len(), 16, "FAKE_PASSWORD(33, 16) should have length 16, got: {}", s.len());
+    assert_eq!(
+        s.len(),
+        16,
+        "FAKE_PASSWORD(33, 16) should have length 16, got: {}",
+        s.len()
+    );
 }
 
 #[test]
 fn test_fake_password_default_length() {
     let (_dir, _db, ex) = setup("pw2");
     let s = run_str(&ex, "pw2", "FAKE_PASSWORD(33)");
-    assert_eq!(s.len(), 12, "FAKE_PASSWORD default length should be 12, got: {}", s.len());
+    assert_eq!(
+        s.len(),
+        12,
+        "FAKE_PASSWORD default length should be 12, got: {}",
+        s.len()
+    );
 }
 
 #[test]
@@ -233,7 +264,11 @@ fn test_fake_hex_color_format() {
     let s = run_str(&ex, "hc1", "FAKE_HEX_COLOR(42)");
     assert!(s.starts_with('#'), "hex color should start with '#': {}", s);
     assert_eq!(s.len(), 7, "hex color should be 7 chars: {}", s);
-    assert!(s[1..].chars().all(|c| c.is_ascii_hexdigit()), "hex color body should be hex digits: {}", s);
+    assert!(
+        s[1..].chars().all(|c| c.is_ascii_hexdigit()),
+        "hex color body should be hex digits: {}",
+        s
+    );
 }
 
 #[test]
@@ -255,7 +290,11 @@ fn test_fake_date_format() {
     let parts: Vec<&str> = s.split('-').collect();
     assert_eq!(parts.len(), 3, "date should have 3 parts: {}", s);
     let year: u32 = parts[0].parse().expect("year should be numeric");
-    assert!(year >= 2000 && year <= 2024, "year should be in range: {}", year);
+    assert!(
+        year >= 2000 && year <= 2024,
+        "year should be in range: {}",
+        year
+    );
 }
 
 #[test]
@@ -291,7 +330,11 @@ fn test_lorem_ipsum_word_count() {
     let (_dir, _db, ex) = setup("li1");
     let s = run_str(&ex, "li1", "LOREM_IPSUM(5)");
     let word_count = s.split_whitespace().count();
-    assert_eq!(word_count, 5, "LOREM_IPSUM(5) should produce 5 words, got: {}", word_count);
+    assert_eq!(
+        word_count, 5,
+        "LOREM_IPSUM(5) should produce 5 words, got: {}",
+        word_count
+    );
 }
 
 #[test]
@@ -316,7 +359,11 @@ fn test_fake_sentence_starts_capitalized() {
     let (_dir, _db, ex) = setup("se2");
     let s = run_str(&ex, "se2", "FAKE_SENTENCE(6)");
     let first_char = s.chars().next().unwrap();
-    assert!(first_char.is_uppercase(), "FAKE_SENTENCE should start with uppercase: {}", s);
+    assert!(
+        first_char.is_uppercase(),
+        "FAKE_SENTENCE should start with uppercase: {}",
+        s
+    );
 }
 
 #[test]

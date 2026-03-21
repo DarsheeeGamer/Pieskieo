@@ -28,13 +28,8 @@ fn make_db(ns: &str, doc: serde_json::Value) -> (tempfile::TempDir, Arc<Pieskieo
 #[test]
 fn test_dft_magnitudes_dc() {
     // DFT of a constant signal [1,1,1,1] should have DC magnitude = 4.0, all others ~0
-    let (_dir, _db, ex) = make_db(
-        "t_dft_dc",
-        serde_json::json!({"arr": [1.0, 1.0, 1.0, 1.0]}),
-    );
-    let mut p = Parser::new(
-        r#"QUERY t_dft_dc COMPUTE mags = DFT_MAGNITUDES(arr) SELECT mags;"#,
-    );
+    let (_dir, _db, ex) = make_db("t_dft_dc", serde_json::json!({"arr": [1.0, 1.0, 1.0, 1.0]}));
+    let mut p = Parser::new(r#"QUERY t_dft_dc COMPUTE mags = DFT_MAGNITUDES(arr) SELECT mags;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("mags") {
         Some(Value::Array(a)) => {
@@ -112,10 +107,7 @@ fn test_zero_crossing_rate_alternating() {
 #[test]
 fn test_zero_crossing_rate_constant() {
     // Constant positive signal: no zero crossings => ZCR = 0.0
-    let (_dir, _db, ex) = make_db(
-        "t_zcr2",
-        serde_json::json!({"arr": [3.0, 3.0, 3.0, 3.0]}),
-    );
+    let (_dir, _db, ex) = make_db("t_zcr2", serde_json::json!({"arr": [3.0, 3.0, 3.0, 3.0]}));
     let mut p = Parser::new(r#"QUERY t_zcr2 COMPUTE z = ZCR(arr) SELECT z;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("z") {
@@ -225,9 +217,7 @@ fn test_convolution_basic() {
         "t_conv",
         serde_json::json!({"sig": [1.0, 2.0, 3.0], "kern": [1.0, 1.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY t_conv COMPUTE c = CONVOLUTION(sig, kern) SELECT c;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t_conv COMPUTE c = CONVOLUTION(sig, kern) SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
         Some(Value::Array(a)) => {
@@ -257,9 +247,8 @@ fn test_low_pass_filter_removes_high_freq() {
         "t_lpf",
         serde_json::json!({"arr": [5.0, 5.0, 5.0, 5.0, 5.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY t_lpf COMPUTE filtered = LOW_PASS_FILTER(arr, 0.5) SELECT filtered;"#,
-    );
+    let mut p =
+        Parser::new(r#"QUERY t_lpf COMPUTE filtered = LOW_PASS_FILTER(arr, 0.5) SELECT filtered;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("filtered") {
         Some(Value::Array(a)) => {
@@ -283,13 +272,8 @@ fn test_low_pass_filter_removes_high_freq() {
 fn test_band_energy_dc_only() {
     // For [1,1,1,1], all energy is at DC (index 0).
     // BAND_ENERGY with range [0,0] should equal magnitude^2 = 16.0
-    let (_dir, _db, ex) = make_db(
-        "t_be",
-        serde_json::json!({"arr": [1.0, 1.0, 1.0, 1.0]}),
-    );
-    let mut p = Parser::new(
-        r#"QUERY t_be COMPUTE e = BAND_ENERGY(arr, 0, 0) SELECT e;"#,
-    );
+    let (_dir, _db, ex) = make_db("t_be", serde_json::json!({"arr": [1.0, 1.0, 1.0, 1.0]}));
+    let mut p = Parser::new(r#"QUERY t_be COMPUTE e = BAND_ENERGY(arr, 0, 0) SELECT e;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("e") {
         Some(Value::Float(f)) => assert!(
@@ -307,13 +291,8 @@ fn test_band_energy_dc_only() {
 fn test_cross_correlation_identical() {
     // Cross-correlation of a signal with itself at lag 0 is maximized
     // For [1,2,3], xcorr at center (lag=0) should be 1+4+9 = 14
-    let (_dir, _db, ex) = make_db(
-        "t_xcorr",
-        serde_json::json!({"arr": [1.0, 2.0, 3.0]}),
-    );
-    let mut p = Parser::new(
-        r#"QUERY t_xcorr COMPUTE xc = CROSS_CORRELATION(arr, arr) SELECT xc;"#,
-    );
+    let (_dir, _db, ex) = make_db("t_xcorr", serde_json::json!({"arr": [1.0, 2.0, 3.0]}));
+    let mut p = Parser::new(r#"QUERY t_xcorr COMPUTE xc = CROSS_CORRELATION(arr, arr) SELECT xc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("xc") {
         Some(Value::Array(a)) => {
@@ -339,9 +318,7 @@ fn test_autocorrelation_full_lag0_is_one() {
         "t_acf",
         serde_json::json!({"arr": [1.0, 3.0, 2.0, 5.0, 4.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY t_acf COMPUTE ac = AUTOCORRELATION_FULL(arr) SELECT ac;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t_acf COMPUTE ac = AUTOCORRELATION_FULL(arr) SELECT ac;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ac") {
         Some(Value::Array(a)) => {
@@ -366,9 +343,7 @@ fn test_snr_equal_energy() {
         "t_snr",
         serde_json::json!({"sig": [1.0, 1.0], "noise": [1.0, 1.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY t_snr COMPUTE s = SNR(sig, noise) SELECT s;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t_snr COMPUTE s = SNR(sig, noise) SELECT s;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("s") {
         Some(Value::Float(f)) => assert!(
@@ -385,17 +360,16 @@ fn test_snr_equal_energy() {
 #[test]
 fn test_apply_window_rectangular() {
     // Rectangular window is identity: output = input
-    let (_dir, _db, ex) = make_db(
-        "t_aw",
-        serde_json::json!({"arr": [1.0, 2.0, 3.0, 4.0]}),
-    );
-    let mut p = Parser::new(
-        r#"QUERY t_aw COMPUTE w = APPLY_WINDOW(arr, "rectangular") SELECT w;"#,
-    );
+    let (_dir, _db, ex) = make_db("t_aw", serde_json::json!({"arr": [1.0, 2.0, 3.0, 4.0]}));
+    let mut p = Parser::new(r#"QUERY t_aw COMPUTE w = APPLY_WINDOW(arr, "rectangular") SELECT w;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("w") {
         Some(Value::Array(a)) => {
-            assert_eq!(a.len(), 4, "rectangular windowed array should have same length");
+            assert_eq!(
+                a.len(),
+                4,
+                "rectangular windowed array should have same length"
+            );
             for (i, v) in a.iter().enumerate() {
                 let expected = (i + 1) as f64;
                 assert!(
@@ -418,9 +392,7 @@ fn test_apply_window_hann_zeroes_endpoints() {
         "t_aw_hann",
         serde_json::json!({"arr": [10.0, 20.0, 30.0, 20.0, 10.0]}),
     );
-    let mut p = Parser::new(
-        r#"QUERY t_aw_hann COMPUTE w = APPLY_WINDOW(arr, "hann") SELECT w;"#,
-    );
+    let mut p = Parser::new(r#"QUERY t_aw_hann COMPUTE w = APPLY_WINDOW(arr, "hann") SELECT w;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("w") {
         Some(Value::Array(a)) => {
@@ -457,8 +429,13 @@ fn test_dominant_frequency_single_tone() {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some("t_dom"), Uuid::new_v4(), serde_json::json!({"arr": samples}))
-        .unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t_dom"),
+        Uuid::new_v4(),
+        serde_json::json!({"arr": samples}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t_dom COMPUTE d = DOMINANT_FREQUENCY(arr) SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {

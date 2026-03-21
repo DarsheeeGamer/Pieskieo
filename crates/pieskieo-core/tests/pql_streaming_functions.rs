@@ -109,8 +109,7 @@ fn test_fixed_window_alias() {
         serde_json::json!({"arr": [2, 4, 6]}),
     )
     .unwrap();
-    let mut p =
-        Parser::new(r#"QUERY t COMPUTE out = FIXED_WINDOW(arr, 3, "COUNT") SELECT out;"#);
+    let mut p = Parser::new(r#"QUERY t COMPUTE out = FIXED_WINDOW(arr, 3, "COUNT") SELECT out;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(Value::Array(a)) => {
@@ -216,7 +215,12 @@ fn test_session_window_basic() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(Value::Array(sessions)) => {
-            assert_eq!(sessions.len(), 3, "expected 3 sessions, got {}", sessions.len());
+            assert_eq!(
+                sessions.len(),
+                3,
+                "expected 3 sessions, got {}",
+                sessions.len()
+            );
             // First session: [1, 2, 3]
             if let Value::Array(s0) = &sessions[0] {
                 assert_eq!(s0.len(), 3, "session 0 should have 3 elements");
@@ -260,7 +264,12 @@ fn test_session_gaps_alias() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(Value::Array(sessions)) => {
-            assert_eq!(sessions.len(), 2, "expected 2 sessions, got {}", sessions.len());
+            assert_eq!(
+                sessions.len(),
+                2,
+                "expected 2 sessions, got {}",
+                sessions.len()
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -317,7 +326,12 @@ fn test_streak_length_with_value() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(v) => {
-            assert_eq!(as_i64(v), 3, "streak of 1s at end should be 3, got {}", as_i64(v));
+            assert_eq!(
+                as_i64(v),
+                3,
+                "streak of 1s at end should be 3, got {}",
+                as_i64(v)
+            );
         }
         None => panic!("expected a value for 'out'"),
     }
@@ -340,7 +354,12 @@ fn test_consecutive_count_alias_no_value() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(v) => {
-            assert_eq!(as_i64(v), 3, "trailing 5s streak should be 3, got {}", as_i64(v));
+            assert_eq!(
+                as_i64(v),
+                3,
+                "trailing 5s streak should be 3, got {}",
+                as_i64(v)
+            );
         }
         None => panic!("expected a value for 'out'"),
     }
@@ -417,9 +436,21 @@ fn test_consecutive_differences() {
     match r.rows[0].data.get("out") {
         Some(Value::Array(a)) => {
             assert_eq!(a.len(), 3, "expected 3 differences for 4-element array");
-            assert!((as_f64(&a[0]) - 2.0).abs() < 0.01, "expected 2.0, got {}", as_f64(&a[0]));
-            assert!((as_f64(&a[1]) - 3.0).abs() < 0.01, "expected 3.0, got {}", as_f64(&a[1]));
-            assert!((as_f64(&a[2]) - 4.0).abs() < 0.01, "expected 4.0, got {}", as_f64(&a[2]));
+            assert!(
+                (as_f64(&a[0]) - 2.0).abs() < 0.01,
+                "expected 2.0, got {}",
+                as_f64(&a[0])
+            );
+            assert!(
+                (as_f64(&a[1]) - 3.0).abs() < 0.01,
+                "expected 3.0, got {}",
+                as_f64(&a[1])
+            );
+            assert!(
+                (as_f64(&a[2]) - 4.0).abs() < 0.01,
+                "expected 4.0, got {}",
+                as_f64(&a[2])
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -443,8 +474,16 @@ fn test_first_differences_alias() {
     match r.rows[0].data.get("out") {
         Some(Value::Array(a)) => {
             assert_eq!(a.len(), 2);
-            assert!((as_f64(&a[0]) - (-3.0)).abs() < 0.01, "expected -3.0, got {}", as_f64(&a[0]));
-            assert!((as_f64(&a[1]) - (-3.0)).abs() < 0.01, "expected -3.0, got {}", as_f64(&a[1]));
+            assert!(
+                (as_f64(&a[0]) - (-3.0)).abs() < 0.01,
+                "expected -3.0, got {}",
+                as_f64(&a[0])
+            );
+            assert!(
+                (as_f64(&a[1]) - (-3.0)).abs() < 0.01,
+                "expected -3.0, got {}",
+                as_f64(&a[1])
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -552,7 +591,11 @@ fn test_detect_peaks_alias() {
     match r.rows[0].data.get("out") {
         Some(Value::Array(a)) => {
             // Peak at 1 (5>1,5>2), valley at 3 (0<2,0<4)
-            assert!(a.len() >= 2, "expected at least 2 extrema (peaks+valleys), got {}", a.len());
+            assert!(
+                a.len() >= 2,
+                "expected at least 2 extrema (peaks+valleys), got {}",
+                a.len()
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -683,7 +726,11 @@ fn test_exp_decay_alias() {
             assert_eq!(a.len(), 4, "output length should equal input length");
             // All values should be floats
             for v in a {
-                assert!(matches!(v, Value::Float(_)), "each value should be Float, got {:?}", v);
+                assert!(
+                    matches!(v, Value::Float(_)),
+                    "each value should be Float, got {:?}",
+                    v
+                );
             }
         }
         other => panic!("expected Array, got {:?}", other),
@@ -819,10 +866,26 @@ fn test_interpolate_nulls() {
     match r.rows[0].data.get("out") {
         Some(Value::Array(a)) => {
             assert_eq!(a.len(), 4);
-            assert!((as_f64(&a[0]) - 1.0).abs() < 0.01, "expected 1.0, got {}", as_f64(&a[0]));
-            assert!((as_f64(&a[1]) - 2.0).abs() < 0.01, "expected 2.0, got {}", as_f64(&a[1]));
-            assert!((as_f64(&a[2]) - 3.0).abs() < 0.01, "expected 3.0, got {}", as_f64(&a[2]));
-            assert!((as_f64(&a[3]) - 4.0).abs() < 0.01, "expected 4.0, got {}", as_f64(&a[3]));
+            assert!(
+                (as_f64(&a[0]) - 1.0).abs() < 0.01,
+                "expected 1.0, got {}",
+                as_f64(&a[0])
+            );
+            assert!(
+                (as_f64(&a[1]) - 2.0).abs() < 0.01,
+                "expected 2.0, got {}",
+                as_f64(&a[1])
+            );
+            assert!(
+                (as_f64(&a[2]) - 3.0).abs() < 0.01,
+                "expected 3.0, got {}",
+                as_f64(&a[2])
+            );
+            assert!(
+                (as_f64(&a[3]) - 4.0).abs() < 0.01,
+                "expected 4.0, got {}",
+                as_f64(&a[3])
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -847,7 +910,11 @@ fn test_linear_fill_alias() {
         Some(Value::Array(a)) => {
             assert_eq!(a.len(), 3);
             // Midpoint between 0 and 10 = 5
-            assert!((as_f64(&a[1]) - 5.0).abs() < 0.01, "expected 5.0, got {}", as_f64(&a[1]));
+            assert!(
+                (as_f64(&a[1]) - 5.0).abs() < 0.01,
+                "expected 5.0, got {}",
+                as_f64(&a[1])
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -872,7 +939,10 @@ fn test_consecutive_differences_single_element_returns_empty() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("out") {
         Some(Value::Array(a)) => {
-            assert!(a.is_empty(), "single-element array should yield 0 differences");
+            assert!(
+                a.is_empty(),
+                "single-element array should yield 0 differences"
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }

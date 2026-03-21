@@ -1,5 +1,8 @@
 /// Integration tests for PQL built-in data validation, data quality, and schema-checking functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -24,7 +27,13 @@ fn to_f64(v: &Value) -> f64 {
 #[test]
 fn test_is_email_valid() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"addr": "user@example.com"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"addr": "user@example.com"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_EMAIL(addr) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -33,7 +42,13 @@ fn test_is_email_valid() {
 #[test]
 fn test_is_email_invalid_no_at() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"addr": "notanemail"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"addr": "notanemail"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_EMAIL(addr) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -42,7 +57,13 @@ fn test_is_email_invalid_no_at() {
 #[test]
 fn test_is_email_short_valid() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"addr": "a@b.c"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"addr": "a@b.c"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_EMAIL(addr) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -51,7 +72,13 @@ fn test_is_email_short_valid() {
 #[test]
 fn test_valid_email_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"addr": "user@example.com"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"addr": "user@example.com"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = VALID_EMAIL(addr) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -60,7 +87,13 @@ fn test_valid_email_alias() {
 #[test]
 fn test_is_email_no_dot_in_domain() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"addr": "user@nodot"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"addr": "user@nodot"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_EMAIL(addr) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -71,7 +104,13 @@ fn test_is_email_no_dot_in_domain() {
 #[test]
 fn test_is_url_https_valid() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"lnk": "https://example.com"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"lnk": "https://example.com"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_URL(lnk) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -80,7 +119,13 @@ fn test_is_url_https_valid() {
 #[test]
 fn test_is_url_invalid_no_scheme() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"lnk": "notaurl"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"lnk": "notaurl"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_URL(lnk) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -89,7 +134,13 @@ fn test_is_url_invalid_no_scheme() {
 #[test]
 fn test_valid_url_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"lnk": "http://example.org/path"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"lnk": "http://example.org/path"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = VALID_URL(lnk) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -100,7 +151,13 @@ fn test_valid_url_alias() {
 #[test]
 fn test_is_phone_valid() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"ph": "+1-800-555-1234"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"ph": "+1-800-555-1234"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_PHONE(ph) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -109,7 +166,13 @@ fn test_is_phone_valid() {
 #[test]
 fn test_is_phone_invalid_letters() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"ph": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"ph": "abc"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_PHONE(ph) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -118,7 +181,13 @@ fn test_is_phone_invalid_letters() {
 #[test]
 fn test_valid_phone_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"ph": "5551234567"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"ph": "5551234567"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = VALID_PHONE(ph) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -130,7 +199,13 @@ fn test_valid_phone_alias() {
 fn test_is_credit_card_valid_visa() {
     let (db, ex) = setup();
     // Valid Visa test number that passes Luhn
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"cc": "4532015112830366"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"cc": "4532015112830366"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_CREDIT_CARD(cc) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -139,7 +214,13 @@ fn test_is_credit_card_valid_visa() {
 #[test]
 fn test_is_credit_card_invalid_short() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"cc": "1234567890"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"cc": "1234567890"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_CREDIT_CARD(cc) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -148,7 +229,13 @@ fn test_is_credit_card_invalid_short() {
 #[test]
 fn test_luhn_check_alias_valid() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"cc": "4532015112830366"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"cc": "4532015112830366"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = LUHN_CHECK(cc) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -157,7 +244,13 @@ fn test_luhn_check_alias_valid() {
 #[test]
 fn test_luhn_check_alias_invalid() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"cc": "4532015112830367"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"cc": "4532015112830367"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = LUHN_CHECK(cc) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -168,7 +261,13 @@ fn test_luhn_check_alias_invalid() {
 #[test]
 fn test_is_postal_code_us_5digit() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"zip": "12345"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"zip": "12345"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_POSTAL_CODE(zip) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -177,7 +276,13 @@ fn test_is_postal_code_us_5digit() {
 #[test]
 fn test_is_postal_code_us_plus4() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"zip": "12345-6789"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"zip": "12345-6789"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_POSTAL_CODE(zip) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -186,7 +291,13 @@ fn test_is_postal_code_us_plus4() {
 #[test]
 fn test_valid_zip_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"zip": "90210"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"zip": "90210"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = VALID_ZIP(zip) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -197,7 +308,13 @@ fn test_valid_zip_alias() {
 #[test]
 fn test_is_date_str_valid() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dt": "2024-01-15"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dt": "2024-01-15"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_DATE_STR(dt) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -206,7 +323,13 @@ fn test_is_date_str_valid() {
 #[test]
 fn test_is_date_str_wrong_format() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dt": "01-15-2024"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dt": "01-15-2024"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_DATE_STR(dt) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -215,7 +338,13 @@ fn test_is_date_str_wrong_format() {
 #[test]
 fn test_is_date_str_invalid_month_13() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dt": "2024-13-01"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dt": "2024-13-01"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_DATE_STR(dt) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -224,7 +353,13 @@ fn test_is_date_str_invalid_month_13() {
 #[test]
 fn test_valid_date_str_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dt": "2000-12-31"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dt": "2000-12-31"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = VALID_DATE_STR(dt) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -235,7 +370,13 @@ fn test_valid_date_str_alias() {
 #[test]
 fn test_is_time_str_valid_hhmmss() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"tm": "14:30:00"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"tm": "14:30:00"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_TIME_STR(tm) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -244,7 +385,13 @@ fn test_is_time_str_valid_hhmmss() {
 #[test]
 fn test_is_time_str_invalid_hour_25() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"tm": "25:00:00"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"tm": "25:00:00"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_TIME_STR(tm) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -253,7 +400,13 @@ fn test_is_time_str_invalid_hour_25() {
 #[test]
 fn test_valid_time_str_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"tm": "09:05"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"tm": "09:05"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = VALID_TIME_STR(tm) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -264,7 +417,13 @@ fn test_valid_time_str_alias() {
 #[test]
 fn test_is_json_str_valid_object() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"payload": "{\"key\":\"value\"}"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"payload": "{\"key\":\"value\"}"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_JSON_STR(payload) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -273,7 +432,13 @@ fn test_is_json_str_valid_object() {
 #[test]
 fn test_is_json_str_invalid() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"payload": "not json"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"payload": "not json"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_JSON_STR(payload) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -282,7 +447,13 @@ fn test_is_json_str_invalid() {
 #[test]
 fn test_valid_json_str_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"payload": "[1,2,3]"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"payload": "[1,2,3]"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = VALID_JSON_STR(payload) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -293,7 +464,13 @@ fn test_valid_json_str_alias() {
 #[test]
 fn test_is_numeric_str_digits_only() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"num": "12345"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"num": "12345"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_NUMERIC_STR(num) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -302,7 +479,13 @@ fn test_is_numeric_str_digits_only() {
 #[test]
 fn test_is_numeric_str_has_dot() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"num": "123.45"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"num": "123.45"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_NUMERIC_STR(num) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -311,7 +494,13 @@ fn test_is_numeric_str_has_dot() {
 #[test]
 fn test_all_digits_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"num": "000999"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"num": "000999"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = ALL_DIGITS(num) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -322,7 +511,13 @@ fn test_all_digits_alias() {
 #[test]
 fn test_is_alpha_only_letters() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "hello"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "hello"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_ALPHA_ONLY(txt) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -331,7 +526,13 @@ fn test_is_alpha_only_letters() {
 #[test]
 fn test_is_alpha_only_with_digits() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "hello123"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "hello123"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_ALPHA_ONLY(txt) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -340,7 +541,13 @@ fn test_is_alpha_only_with_digits() {
 #[test]
 fn test_letters_only_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "ABCdef"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "ABCdef"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = LETTERS_ONLY(txt) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -351,7 +558,13 @@ fn test_letters_only_alias() {
 #[test]
 fn test_is_alphanumeric_mixed() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "hello123"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "hello123"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_ALPHANUMERIC(txt) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -360,7 +573,13 @@ fn test_is_alphanumeric_mixed() {
 #[test]
 fn test_is_alphanumeric_with_special() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "hello!"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "hello!"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_ALPHANUMERIC(txt) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -369,7 +588,13 @@ fn test_is_alphanumeric_with_special() {
 #[test]
 fn test_alnum_only_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "abc123"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "abc123"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = ALNUM_ONLY(txt) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -380,11 +605,21 @@ fn test_alnum_only_alias() {
 #[test]
 fn test_completeness_score_all_non_null() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"rec": {"fname": "Alice", "lname": "Smith", "age": 30}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"rec": {"fname": "Alice", "lname": "Smith", "age": 30}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = COMPLETENESS_SCORE(rec) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(v) => assert!((to_f64(v) - 1.0).abs() < 0.001, "expected 1.0, got {}", to_f64(v)),
+        Some(v) => assert!(
+            (to_f64(v) - 1.0).abs() < 0.001,
+            "expected 1.0, got {}",
+            to_f64(v)
+        ),
         None => panic!("missing sc"),
     }
 }
@@ -392,11 +627,21 @@ fn test_completeness_score_all_non_null() {
 #[test]
 fn test_completeness_score_half_null() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"rec": {"fname": "Bob", "lname": null}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"rec": {"fname": "Bob", "lname": null}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = COMPLETENESS_SCORE(rec) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(v) => assert!((to_f64(v) - 0.5).abs() < 0.001, "expected 0.5, got {}", to_f64(v)),
+        Some(v) => assert!(
+            (to_f64(v) - 0.5).abs() < 0.001,
+            "expected 0.5, got {}",
+            to_f64(v)
+        ),
         None => panic!("missing sc"),
     }
 }
@@ -404,11 +649,21 @@ fn test_completeness_score_half_null() {
 #[test]
 fn test_data_complete_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"rec": {"x": 1, "y": 2}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"rec": {"x": 1, "y": 2}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = DATA_COMPLETE(rec) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sc") {
-        Some(v) => assert!((to_f64(v) - 1.0).abs() < 0.001, "DATA_COMPLETE alias should give 1.0, got {}", to_f64(v)),
+        Some(v) => assert!(
+            (to_f64(v) - 1.0).abs() < 0.001,
+            "DATA_COMPLETE alias should give 1.0, got {}",
+            to_f64(v)
+        ),
         None => panic!("missing sc"),
     }
 }
@@ -418,11 +673,21 @@ fn test_data_complete_alias() {
 #[test]
 fn test_uniqueness_ratio_all_distinct() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"arr": [1, 2, 3]})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"arr": [1, 2, 3]}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ur = UNIQUENESS_RATIO(arr) SELECT ur;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ur") {
-        Some(v) => assert!((to_f64(v) - 1.0).abs() < 0.001, "all distinct → 1.0, got {}", to_f64(v)),
+        Some(v) => assert!(
+            (to_f64(v) - 1.0).abs() < 0.001,
+            "all distinct → 1.0, got {}",
+            to_f64(v)
+        ),
         None => panic!("missing ur"),
     }
 }
@@ -430,7 +695,13 @@ fn test_uniqueness_ratio_all_distinct() {
 #[test]
 fn test_uniqueness_ratio_all_same() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"arr": [1, 1, 1]})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"arr": [1, 1, 1]}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ur = UNIQUENESS_RATIO(arr) SELECT ur;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ur") {
@@ -445,14 +716,24 @@ fn test_uniqueness_ratio_all_same() {
 #[test]
 fn test_distinct_ratio_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"arr": [1, 2, 2, 3]})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"arr": [1, 2, 2, 3]}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ur = DISTINCT_RATIO(arr) SELECT ur;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ur") {
         Some(v) => {
             let f = to_f64(v);
             // 3 distinct out of 4 → 0.75
-            assert!((f - 0.75).abs() < 0.001, "DISTINCT_RATIO: 3 distinct of 4 → 0.75, got {}", f);
+            assert!(
+                (f - 0.75).abs() < 0.001,
+                "DISTINCT_RATIO: 3 distinct of 4 → 0.75, got {}",
+                f
+            );
         }
         None => panic!("missing ur"),
     }
@@ -463,13 +744,23 @@ fn test_distinct_ratio_alias() {
 #[test]
 fn test_data_quality_score_full_object() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"rec": {"fname": "Alice", "lname": "Smith", "age": 30}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"rec": {"fname": "Alice", "lname": "Smith", "age": 30}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE dq = DATA_QUALITY_SCORE(rec) SELECT dq;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("dq") {
         Some(v) => {
             let f = to_f64(v);
-            assert!(f >= 0.9, "fully populated object should have high DQ score, got {}", f);
+            assert!(
+                f >= 0.9,
+                "fully populated object should have high DQ score, got {}",
+                f
+            );
         }
         None => panic!("missing dq"),
     }
@@ -478,13 +769,23 @@ fn test_data_quality_score_full_object() {
 #[test]
 fn test_data_quality_score_with_nulls() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"rec": {"fname": "Bob", "lname": null, "age": null}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"rec": {"fname": "Bob", "lname": null, "age": null}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE dq = DATA_QUALITY_SCORE(rec) SELECT dq;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("dq") {
         Some(v) => {
             let f = to_f64(v);
-            assert!(f < 0.9, "object with nulls should have lower DQ score, got {}", f);
+            assert!(
+                f < 0.9,
+                "object with nulls should have lower DQ score, got {}",
+                f
+            );
         }
         None => panic!("missing dq"),
     }
@@ -493,13 +794,23 @@ fn test_data_quality_score_with_nulls() {
 #[test]
 fn test_dq_score_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"rec": {"field": "value"}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"rec": {"field": "value"}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE dq = DQ_SCORE(rec) SELECT dq;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("dq") {
         Some(v) => {
             let f = to_f64(v);
-            assert!((f - 1.0).abs() < 0.001, "DQ_SCORE alias: single string field → 1.0, got {}", f);
+            assert!(
+                (f - 1.0).abs() < 0.001,
+                "DQ_SCORE alias: single string field → 1.0, got {}",
+                f
+            );
         }
         None => panic!("missing dq"),
     }
@@ -511,7 +822,13 @@ fn test_dq_score_alias() {
 fn test_is_iban_valid_gb() {
     let (db, ex) = setup();
     // GB29NWBK60161331926819 is a valid IBAN test value
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"iban": "GB29NWBK60161331926819"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"iban": "GB29NWBK60161331926819"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_IBAN(iban) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));
@@ -520,7 +837,13 @@ fn test_is_iban_valid_gb() {
 #[test]
 fn test_is_iban_invalid_too_short() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"iban": "GB29"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"iban": "GB29"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = IS_IBAN(iban) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(false)));
@@ -529,7 +852,13 @@ fn test_is_iban_invalid_too_short() {
 #[test]
 fn test_valid_iban_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"iban": "GB29NWBK60161331926819"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"iban": "GB29NWBK60161331926819"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ok = VALID_IBAN(iban) SELECT ok;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("ok"), Some(&Value::Bool(true)));

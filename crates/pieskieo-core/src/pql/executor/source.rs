@@ -47,8 +47,9 @@ pub(crate) fn load_source(
                     let data: HashMap<String, Value> = fields
                         .iter()
                         .map(|(k, expr)| {
-                            let v = super::expressions::evaluate_expression(executor, expr, &empty_row)
-                                .unwrap_or(Value::Null);
+                            let v =
+                                super::expressions::evaluate_expression(executor, expr, &empty_row)
+                                    .unwrap_or(Value::Null);
                             (k.clone(), v)
                         })
                         .collect();

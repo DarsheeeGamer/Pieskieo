@@ -1,5 +1,8 @@
 /// Integration tests for advanced graph analytics functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -13,15 +16,22 @@ fn test_graph_connected_components_count_isolated() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("pts"), a, serde_json::json!({"id": 1})).unwrap();
-    db.put_doc_ns(None, Some("pts"), b, serde_json::json!({"id": 2})).unwrap();
-    db.put_doc_ns(None, Some("pts"), c, serde_json::json!({"id": 3})).unwrap();
+    db.put_doc_ns(None, Some("pts"), a, serde_json::json!({"id": 1}))
+        .unwrap();
+    db.put_doc_ns(None, Some("pts"), b, serde_json::json!({"id": 2}))
+        .unwrap();
+    db.put_doc_ns(None, Some("pts"), c, serde_json::json!({"id": 3}))
+        .unwrap();
 
-    let mut p = Parser::new(r#"QUERY pts COMPUTE g = 1 GROUP BY g COMPUTE cc = GRAPH_CONNECTED_COMPONENTS_COUNT("pts") SELECT cc;"#);
+    let mut p = Parser::new(
+        r#"QUERY pts COMPUTE g = 1 GROUP BY g COMPUTE cc = GRAPH_CONNECTED_COMPONENTS_COUNT("pts") SELECT cc;"#,
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty(), "should have at least one result row");
     match r.rows[0].data.get("cc") {
-        Some(Value::Integer(n)) => assert_eq!(*n, 3, "should have 3 isolated components, got {}", n),
+        Some(Value::Integer(n)) => {
+            assert_eq!(*n, 3, "should have 3 isolated components, got {}", n)
+        }
         other => panic!("expected Integer, got {:?}", other),
     }
 }
@@ -35,17 +45,24 @@ fn test_graph_connected_components_count_connected() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("conn"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("conn"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("conn"), c, serde_json::json!({"name": "C"})).unwrap();
+    db.put_doc_ns(None, Some("conn"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("conn"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("conn"), c, serde_json::json!({"name": "C"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
     db.add_edge(b, c, 1.0).unwrap();
 
-    let mut p = Parser::new(r#"QUERY conn COMPUTE g = 1 GROUP BY g COMPUTE cc = GRAPH_CONNECTED_COMPONENTS_COUNT("conn") SELECT cc;"#);
+    let mut p = Parser::new(
+        r#"QUERY conn COMPUTE g = 1 GROUP BY g COMPUTE cc = GRAPH_CONNECTED_COMPONENTS_COUNT("conn") SELECT cc;"#,
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty(), "should have at least one result row");
     match r.rows[0].data.get("cc") {
-        Some(Value::Integer(n)) => assert_eq!(*n, 1, "all connected should be 1 component, got {}", n),
+        Some(Value::Integer(n)) => {
+            assert_eq!(*n, 1, "all connected should be 1 component, got {}", n)
+        }
         other => panic!("expected Integer, got {:?}", other),
     }
 }
@@ -56,14 +73,20 @@ fn test_graph_density_no_edges() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     for i in 0..4 {
-        db.put_doc_ns(None, Some("g"), Uuid::new_v4(), serde_json::json!({"i": i})).unwrap();
+        db.put_doc_ns(None, Some("g"), Uuid::new_v4(), serde_json::json!({"i": i}))
+            .unwrap();
     }
 
-    let mut p = Parser::new(r#"QUERY g COMPUTE g = 1 GROUP BY g COMPUTE d = GRAPH_DENSITY("g") SELECT d;"#);
+    let mut p =
+        Parser::new(r#"QUERY g COMPUTE g = 1 GROUP BY g COMPUTE d = GRAPH_DENSITY("g") SELECT d;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty(), "should have at least one result row");
     match r.rows[0].data.get("d") {
-        Some(Value::Float(f)) => assert!(*f >= 0.0 && *f <= 1.0, "density should be in [0,1], got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f >= 0.0 && *f <= 1.0,
+            "density should be in [0,1], got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -74,7 +97,13 @@ fn test_graph_has_path_self() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     let node_id = Uuid::new_v4();
-    db.put_doc_ns(None, Some("graph"), node_id, serde_json::json!({"name": "self"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("graph"),
+        node_id,
+        serde_json::json!({"name": "self"}),
+    )
+    .unwrap();
 
     // A node is reachable from itself
     let query = format!(
@@ -98,8 +127,10 @@ fn test_graph_has_path_unreachable() {
     let ex = Executor::new(db.clone());
     let n1 = Uuid::new_v4();
     let n2 = Uuid::new_v4();
-    db.put_doc_ns(None, Some("graph"), n1, serde_json::json!({"name": "n1"})).unwrap();
-    db.put_doc_ns(None, Some("graph"), n2, serde_json::json!({"name": "n2"})).unwrap();
+    db.put_doc_ns(None, Some("graph"), n1, serde_json::json!({"name": "n1"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("graph"), n2, serde_json::json!({"name": "n2"}))
+        .unwrap();
     // No edges added — n1 and n2 are not connected
 
     let query = format!(
@@ -122,7 +153,13 @@ fn test_graph_shortest_path_same_node() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     let node_id = Uuid::new_v4();
-    db.put_doc_ns(None, Some("graph"), node_id, serde_json::json!({"name": "node"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("graph"),
+        node_id,
+        serde_json::json!({"name": "node"}),
+    )
+    .unwrap();
 
     let query = format!(
         r#"QUERY graph COMPUTE d = GRAPH_SHORTEST_PATH_LENGTH("{}", "{}") SELECT d;"#,
@@ -146,9 +183,12 @@ fn test_graph_shortest_path_length_connected() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("path_test"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("path_test"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("path_test"), c, serde_json::json!({"name": "C"})).unwrap();
+    db.put_doc_ns(None, Some("path_test"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("path_test"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("path_test"), c, serde_json::json!({"name": "C"}))
+        .unwrap();
     // A-B-C path
     db.add_edge(a, b, 1.0).unwrap();
     db.add_edge(b, c, 1.0).unwrap();
@@ -175,8 +215,10 @@ fn test_graph_shortest_path_unreachable() {
     let ex = Executor::new(db.clone());
     let n1 = Uuid::new_v4();
     let n2 = Uuid::new_v4();
-    db.put_doc_ns(None, Some("unreach"), n1, serde_json::json!({"name": "n1"})).unwrap();
-    db.put_doc_ns(None, Some("unreach"), n2, serde_json::json!({"name": "n2"})).unwrap();
+    db.put_doc_ns(None, Some("unreach"), n1, serde_json::json!({"name": "n1"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("unreach"), n2, serde_json::json!({"name": "n2"}))
+        .unwrap();
 
     let query = format!(
         r#"QUERY unreach WHERE name = "n1" COMPUTE d = GRAPH_SHORTEST_PATH_LENGTH("{}", "{}") SELECT d;"#,
@@ -199,8 +241,10 @@ fn test_graph_common_neighbors_none() {
     let ex = Executor::new(db.clone());
     let n1 = Uuid::new_v4();
     let n2 = Uuid::new_v4();
-    db.put_doc_ns(None, Some("g"), n1, serde_json::json!({"name": "n1"})).unwrap();
-    db.put_doc_ns(None, Some("g"), n2, serde_json::json!({"name": "n2"})).unwrap();
+    db.put_doc_ns(None, Some("g"), n1, serde_json::json!({"name": "n1"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("g"), n2, serde_json::json!({"name": "n2"}))
+        .unwrap();
 
     // No edges → no common neighbors
     let query = format!(
@@ -221,9 +265,17 @@ fn test_graph_common_neighbors_with_shared() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let shared = Uuid::new_v4();
-    db.put_doc_ns(None, Some("cn"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("cn"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("cn"), shared, serde_json::json!({"name": "shared"})).unwrap();
+    db.put_doc_ns(None, Some("cn"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("cn"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(
+        None,
+        Some("cn"),
+        shared,
+        serde_json::json!({"name": "shared"}),
+    )
+    .unwrap();
     // Both A and B connect to shared
     db.add_edge(a, shared, 1.0).unwrap();
     db.add_edge(b, shared, 1.0).unwrap();
@@ -236,7 +288,9 @@ fn test_graph_common_neighbors_with_shared() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty(), "should have at least one result row");
     match r.rows[0].data.get("c") {
-        Some(Value::Integer(n)) => assert!(*n >= 1, "should have at least 1 common neighbor, got {}", n),
+        Some(Value::Integer(n)) => {
+            assert!(*n >= 1, "should have at least 1 common neighbor, got {}", n)
+        }
         other => panic!("expected Integer, got {:?}", other),
     }
 }
@@ -248,8 +302,10 @@ fn test_graph_jaccard_similarity_no_edges() {
     let ex = Executor::new(db.clone());
     let n1 = Uuid::new_v4();
     let n2 = Uuid::new_v4();
-    db.put_doc_ns(None, Some("jac"), n1, serde_json::json!({"name": "n1"})).unwrap();
-    db.put_doc_ns(None, Some("jac"), n2, serde_json::json!({"name": "n2"})).unwrap();
+    db.put_doc_ns(None, Some("jac"), n1, serde_json::json!({"name": "n1"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("jac"), n2, serde_json::json!({"name": "n2"}))
+        .unwrap();
 
     let query = format!(
         r#"QUERY jac WHERE name = "n1" COMPUTE j = GRAPH_JACCARD_SIMILARITY("{}", "{}") SELECT j;"#,
@@ -272,8 +328,10 @@ fn test_adamic_adar_no_common() {
     let ex = Executor::new(db.clone());
     let n1 = Uuid::new_v4();
     let n2 = Uuid::new_v4();
-    db.put_doc_ns(None, Some("aa"), n1, serde_json::json!({"name": "n1"})).unwrap();
-    db.put_doc_ns(None, Some("aa"), n2, serde_json::json!({"name": "n2"})).unwrap();
+    db.put_doc_ns(None, Some("aa"), n1, serde_json::json!({"name": "n1"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("aa"), n2, serde_json::json!({"name": "n2"}))
+        .unwrap();
 
     let query = format!(
         r#"QUERY aa WHERE name = "n1" COMPUTE score = ADAMIC_ADAR("{}", "{}") SELECT score;"#,
@@ -296,8 +354,10 @@ fn test_bfs_distance_alias() {
     let ex = Executor::new(db.clone());
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
-    db.put_doc_ns(None, Some("bfs"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("bfs"), b, serde_json::json!({"name": "B"})).unwrap();
+    db.put_doc_ns(None, Some("bfs"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("bfs"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
 
     // BFS_DISTANCE is an alias for GRAPH_SHORTEST_PATH_LENGTH
@@ -322,8 +382,10 @@ fn test_is_reachable_alias() {
     let ex = Executor::new(db.clone());
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
-    db.put_doc_ns(None, Some("reach"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("reach"), b, serde_json::json!({"name": "B"})).unwrap();
+    db.put_doc_ns(None, Some("reach"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("reach"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
 
     // IS_REACHABLE is an alias for GRAPH_HAS_PATH
@@ -349,9 +411,12 @@ fn test_graph_eccentricity_path() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("ecc"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("ecc"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("ecc"), c, serde_json::json!({"name": "C"})).unwrap();
+    db.put_doc_ns(None, Some("ecc"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("ecc"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("ecc"), c, serde_json::json!({"name": "C"}))
+        .unwrap();
     // A-B-C path: eccentricity of B is 1, eccentricity of A is 2
     db.add_edge(a, b, 1.0).unwrap();
     db.add_edge(b, c, 1.0).unwrap();
@@ -365,7 +430,9 @@ fn test_graph_eccentricity_path() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty(), "should have at least one result row");
     match r.rows[0].data.get("ecc") {
-        Some(Value::Integer(n)) => assert_eq!(*n, 2, "eccentricity of endpoint should be 2, got {}", n),
+        Some(Value::Integer(n)) => {
+            assert_eq!(*n, 2, "eccentricity of endpoint should be 2, got {}", n)
+        }
         other => panic!("expected Integer, got {:?}", other),
     }
 }
@@ -377,15 +444,23 @@ fn test_network_density_alias() {
     let ex = Executor::new(db.clone());
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
-    db.put_doc_ns(None, Some("nd"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("nd"), b, serde_json::json!({"name": "B"})).unwrap();
+    db.put_doc_ns(None, Some("nd"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("nd"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
 
     // NETWORK_DENSITY is alias for GRAPH_DENSITY
-    let mut p = Parser::new(r#"QUERY nd COMPUTE g = 1 GROUP BY g COMPUTE d = NETWORK_DENSITY("nd") SELECT d;"#);
+    let mut p = Parser::new(
+        r#"QUERY nd COMPUTE g = 1 GROUP BY g COMPUTE d = NETWORK_DENSITY("nd") SELECT d;"#,
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty(), "should have at least one result row");
     match r.rows[0].data.get("d") {
-        Some(Value::Float(f)) => assert!(*f >= 0.0 && *f <= 1.0, "density should be in [0,1], got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f >= 0.0 && *f <= 1.0,
+            "density should be in [0,1], got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }

@@ -1,5 +1,8 @@
 /// Integration tests for graph metric functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -15,12 +18,27 @@ fn test_graph_degree_functions() {
     let carol_id = Uuid::new_v4();
 
     // Store the UUIDs in the document data so they can be referenced in queries
-    db.put_doc_ns(None, Some("people"), alice_id,
-        serde_json::json!({"name": "Alice", "node_id": alice_id.to_string()})).unwrap();
-    db.put_doc_ns(None, Some("people"), bob_id,
-        serde_json::json!({"name": "Bob", "node_id": bob_id.to_string()})).unwrap();
-    db.put_doc_ns(None, Some("people"), carol_id,
-        serde_json::json!({"name": "Carol", "node_id": carol_id.to_string()})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("people"),
+        alice_id,
+        serde_json::json!({"name": "Alice", "node_id": alice_id.to_string()}),
+    )
+    .unwrap();
+    db.put_doc_ns(
+        None,
+        Some("people"),
+        bob_id,
+        serde_json::json!({"name": "Bob", "node_id": bob_id.to_string()}),
+    )
+    .unwrap();
+    db.put_doc_ns(
+        None,
+        Some("people"),
+        carol_id,
+        serde_json::json!({"name": "Carol", "node_id": carol_id.to_string()}),
+    )
+    .unwrap();
 
     // Alice -> Bob, Alice -> Carol
     db.add_edge(alice_id, bob_id, 1.0).unwrap();
@@ -84,10 +102,20 @@ fn test_graph_neighbors_function() {
     let alice_id = Uuid::new_v4();
     let bob_id = Uuid::new_v4();
 
-    db.put_doc_ns(None, Some("people"), alice_id,
-        serde_json::json!({"name": "Alice", "node_id": alice_id.to_string()})).unwrap();
-    db.put_doc_ns(None, Some("people"), bob_id,
-        serde_json::json!({"name": "Bob", "node_id": bob_id.to_string()})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("people"),
+        alice_id,
+        serde_json::json!({"name": "Alice", "node_id": alice_id.to_string()}),
+    )
+    .unwrap();
+    db.put_doc_ns(
+        None,
+        Some("people"),
+        bob_id,
+        serde_json::json!({"name": "Bob", "node_id": bob_id.to_string()}),
+    )
+    .unwrap();
 
     db.add_edge(alice_id, bob_id, 1.0).unwrap();
 
@@ -122,21 +150,40 @@ fn test_graph_basic_traversal() {
     let bob_id = Uuid::new_v4();
     let carol_id = Uuid::new_v4();
 
-    db.put_doc_ns(None, Some("people"), alice_id, serde_json::json!({"name": "Alice"})).unwrap();
-    db.put_doc_ns(None, Some("people"), bob_id, serde_json::json!({"name": "Bob"})).unwrap();
-    db.put_doc_ns(None, Some("people"), carol_id, serde_json::json!({"name": "Carol"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("people"),
+        alice_id,
+        serde_json::json!({"name": "Alice"}),
+    )
+    .unwrap();
+    db.put_doc_ns(
+        None,
+        Some("people"),
+        bob_id,
+        serde_json::json!({"name": "Bob"}),
+    )
+    .unwrap();
+    db.put_doc_ns(
+        None,
+        Some("people"),
+        carol_id,
+        serde_json::json!({"name": "Carol"}),
+    )
+    .unwrap();
 
     // Alice -> Bob, Bob -> Carol
     db.add_edge(alice_id, bob_id, 1.0).unwrap();
     db.add_edge(bob_id, carol_id, 1.0).unwrap();
 
     // Traverse all nodes at depth 1 to 2. Check that the traversal stats record correctly.
-    let r = ex.execute(
-        Parser::new("QUERY people TRAVERSE DEPTH 1 TO 2 SELECT name;")
-            .parse()
-            .unwrap(),
-    )
-    .unwrap();
+    let r = ex
+        .execute(
+            Parser::new("QUERY people TRAVERSE DEPTH 1 TO 2 SELECT name;")
+                .parse()
+                .unwrap(),
+        )
+        .unwrap();
     // The graph_traversals stat should be incremented (one traversal operation executed)
     assert_eq!(
         r.stats.graph_traversals, 1,

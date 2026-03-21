@@ -23,7 +23,13 @@ fn get_float(v: &Value) -> f64 {
 }
 
 fn get_obj_float(obj: &std::collections::HashMap<String, Value>, key: &str) -> f64 {
-    get_float(obj.get(key).unwrap_or_else(|| panic!("Key '{}' not in obj {:?}", key, obj.keys().collect::<Vec<_>>())))
+    get_float(obj.get(key).unwrap_or_else(|| {
+        panic!(
+            "Key '{}' not in obj {:?}",
+            key,
+            obj.keys().collect::<Vec<_>>()
+        )
+    }))
 }
 
 // ── PEARSON_CORR ──────────────────────────────────────────────────────────────
@@ -31,39 +37,83 @@ fn get_obj_float(obj: &std::collections::HashMap<String, Value>, key: &str) -> f
 #[test]
 fn test_pearson_perfect_positive() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE r = PEARSON_CORR([1.0, 2.0, 3.0, 4.0, 5.0], [2.0, 4.0, 6.0, 8.0, 10.0]) SELECT r;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE r = PEARSON_CORR([1.0, 2.0, 3.0, 4.0, 5.0], [2.0, 4.0, 6.0, 8.0, 10.0]) SELECT r;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("r").unwrap());
-    assert!((f - 1.0).abs() < 0.001, "perfect correlation should be 1.0, got {}", f);
+    assert!(
+        (f - 1.0).abs() < 0.001,
+        "perfect correlation should be 1.0, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_pearson_perfect_negative() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE r = PEARSON_CORR([1.0, 2.0, 3.0, 4.0, 5.0], [10.0, 8.0, 6.0, 4.0, 2.0]) SELECT r;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE r = PEARSON_CORR([1.0, 2.0, 3.0, 4.0, 5.0], [10.0, 8.0, 6.0, 4.0, 2.0]) SELECT r;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("r").unwrap());
-    assert!((f + 1.0).abs() < 0.001, "perfect negative correlation should be -1.0, got {}", f);
+    assert!(
+        (f + 1.0).abs() < 0.001,
+        "perfect negative correlation should be -1.0, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_pearson_coef_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE r = PEARSON_COEF([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]) SELECT r;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE r = PEARSON_COEF([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]) SELECT r;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("r").unwrap());
-    assert!((f - 1.0).abs() < 0.001, "PEARSON_COEF alias should work, got {}", f);
+    assert!(
+        (f - 1.0).abs() < 0.001,
+        "PEARSON_COEF alias should work, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_pearson_zero_correlation() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // Orthogonal-ish data
-    let mut p = Parser::new(r#"QUERY t COMPUTE r = PEARSON_CORR([1.0, 2.0, 3.0, 4.0], [1.0, -1.0, 1.0, -1.0]) SELECT r;"#);
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE r = PEARSON_CORR([1.0, 2.0, 3.0, 4.0], [1.0, -1.0, 1.0, -1.0]) SELECT r;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("r").unwrap());
     assert!(f.abs() < 0.1, "near-zero correlation, got {}", f);
@@ -74,21 +124,45 @@ fn test_pearson_zero_correlation() {
 #[test]
 fn test_spearman_perfect_positive() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE r = SPEARMAN_RHO([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT r;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE r = SPEARMAN_RHO([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT r;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("r").unwrap());
-    assert!((f - 1.0).abs() < 0.001, "perfect Spearman should be 1.0, got {}", f);
+    assert!(
+        (f - 1.0).abs() < 0.001,
+        "perfect Spearman should be 1.0, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_spearman_rank_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE r = SPEARMAN_RANK([1.0, 2.0, 3.0], [3.0, 2.0, 1.0]) SELECT r;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE r = SPEARMAN_RANK([1.0, 2.0, 3.0], [3.0, 2.0, 1.0]) SELECT r;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("r").unwrap());
-    assert!((f + 1.0).abs() < 0.001, "SPEARMAN_RANK alias perfect negative, got {}", f);
+    assert!(
+        (f + 1.0).abs() < 0.001,
+        "SPEARMAN_RANK alias perfect negative, got {}",
+        f
+    );
 }
 
 // ── KENDALL_TAU ───────────────────────────────────────────────────────────────
@@ -96,21 +170,45 @@ fn test_spearman_rank_alias() {
 #[test]
 fn test_kendall_tau_perfect_concordant() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE r = KENDALL_TAU([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT r;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE r = KENDALL_TAU([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT r;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("r").unwrap());
-    assert!((f - 1.0).abs() < 0.001, "all concordant should be 1.0, got {}", f);
+    assert!(
+        (f - 1.0).abs() < 0.001,
+        "all concordant should be 1.0, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_kendall_correlation_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE r = KENDALL_CORRELATION([1.0, 2.0, 3.0], [3.0, 2.0, 1.0]) SELECT r;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE r = KENDALL_CORRELATION([1.0, 2.0, 3.0], [3.0, 2.0, 1.0]) SELECT r;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("r").unwrap());
-    assert!((f + 1.0).abs() < 0.001, "KENDALL_CORRELATION all discordant should be -1.0, got {}", f);
+    assert!(
+        (f + 1.0).abs() < 0.001,
+        "KENDALL_CORRELATION all discordant should be -1.0, got {}",
+        f
+    );
 }
 
 // ── POINT_BISERIAL ────────────────────────────────────────────────────────────
@@ -118,21 +216,42 @@ fn test_kendall_correlation_alias() {
 #[test]
 fn test_point_biserial_basic() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE r = POINT_BISERIAL([0.0, 0.0, 1.0, 1.0], [1.0, 2.0, 8.0, 9.0]) SELECT r;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE r = POINT_BISERIAL([0.0, 0.0, 1.0, 1.0], [1.0, 2.0, 8.0, 9.0]) SELECT r;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("r").unwrap());
-    assert!(f > 0.9, "binary 0,0,1,1 with low,low,high,high should be ~1, got {}", f);
+    assert!(
+        f > 0.9,
+        "binary 0,0,1,1 with low,low,high,high should be ~1, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_point_biserial_r_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE r = POINT_BISERIAL_R([0.0, 1.0], [1.0, 2.0]) SELECT r;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE r = POINT_BISERIAL_R([0.0, 1.0], [1.0, 2.0]) SELECT r;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("r") {
-        Some(v) => { let _ = get_float(v); } // should return a number
+        Some(v) => {
+            let _ = get_float(v);
+        } // should return a number
         None => panic!("Expected result"),
     }
 }
@@ -142,16 +261,27 @@ fn test_point_biserial_r_alias() {
 #[test]
 fn test_t_test_one_sample_zero_effect() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // mean=3, mu=3 => t_stat~0
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = T_TEST_ONE_SAMPLE([1.0, 2.0, 3.0, 4.0, 5.0], 3.0) SELECT res;"#);
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = T_TEST_ONE_SAMPLE([1.0, 2.0, 3.0, 4.0, 5.0], 3.0) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
             let t = get_obj_float(obj, "t_stat");
             assert!(t.abs() < 0.001, "mean==mu => t~0, got {}", t);
             assert!(obj.contains_key("df"), "should have df");
-            assert!(obj.contains_key("p_value_approx"), "should have p_value_approx");
+            assert!(
+                obj.contains_key("p_value_approx"),
+                "should have p_value_approx"
+            );
         }
         other => panic!("Expected Object, got {:?}", other),
     }
@@ -160,13 +290,25 @@ fn test_t_test_one_sample_zero_effect() {
 #[test]
 fn test_t_test_one_sample_large_effect() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = T_TEST_ONE_SAMPLE([10.0, 11.0, 12.0, 13.0, 14.0], 0.0) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = T_TEST_ONE_SAMPLE([10.0, 11.0, 12.0, 13.0, 14.0], 0.0) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
             let t = get_obj_float(obj, "t_stat");
-            assert!(t > 5.0, "large deviation from mu=0 should give t>5, got {}", t);
+            assert!(
+                t > 5.0,
+                "large deviation from mu=0 should give t>5, got {}",
+                t
+            );
         }
         other => panic!("Expected Object, got {:?}", other),
     }
@@ -175,8 +317,15 @@ fn test_t_test_one_sample_large_effect() {
 #[test]
 fn test_t_one_sample_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = T_ONE_SAMPLE([1.0, 2.0, 3.0], 2.0) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE res = T_ONE_SAMPLE([1.0, 2.0, 3.0], 2.0) SELECT res;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -191,8 +340,16 @@ fn test_t_one_sample_alias() {
 #[test]
 fn test_t_test_two_sample_same_distributions() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = T_TEST_TWO_SAMPLE([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = T_TEST_TWO_SAMPLE([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 4.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -206,8 +363,16 @@ fn test_t_test_two_sample_same_distributions() {
 #[test]
 fn test_t_test_two_sample_different_means() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = T_TEST_TWO_SAMPLE([1.0, 2.0, 3.0], [100.0, 101.0, 102.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = T_TEST_TWO_SAMPLE([1.0, 2.0, 3.0], [100.0, 101.0, 102.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -225,9 +390,17 @@ fn test_t_test_two_sample_different_means() {
 #[test]
 fn test_t_test_paired_no_difference() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // Identical arrays => t=0
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = T_TEST_PAIRED([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT res;"#);
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = T_TEST_PAIRED([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Null) => {} // acceptable when std_d=0
@@ -242,8 +415,16 @@ fn test_t_test_paired_no_difference() {
 #[test]
 fn test_t_test_paired_consistent_increase() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = PAIRED_T_TEST([5.0, 6.0, 7.0, 8.0, 9.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = PAIRED_T_TEST([5.0, 6.0, 7.0, 8.0, 9.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -259,8 +440,16 @@ fn test_t_test_paired_consistent_increase() {
 #[test]
 fn test_z_test_zero_effect() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE z = Z_TEST_ONE_SAMPLE([3.0, 3.0, 3.0, 3.0], 3.0, 1.0) SELECT z;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE z = Z_TEST_ONE_SAMPLE([3.0, 3.0, 3.0, 3.0], 3.0, 1.0) SELECT z;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("z").unwrap());
     assert!(f.abs() < 0.001, "mean==mu => z~0, got {}", f);
@@ -269,7 +458,13 @@ fn test_z_test_zero_effect() {
 #[test]
 fn test_z_test_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE z = Z_TEST([5.0, 5.0, 5.0], 0.0, 1.0) SELECT z;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("z").unwrap());
@@ -281,8 +476,16 @@ fn test_z_test_alias() {
 #[test]
 fn test_f_test_equal_variance() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE f = F_TEST_VARIANCE([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT f;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE f = F_TEST_VARIANCE([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT f;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("f").unwrap());
     assert!((f - 1.0).abs() < 0.001, "equal variances => F=1, got {}", f);
@@ -291,19 +494,37 @@ fn test_f_test_equal_variance() {
 #[test]
 fn test_f_test_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE f = F_TEST([1.0, 2.0, 3.0], [10.0, 20.0, 30.0]) SELECT f;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE f = F_TEST([1.0, 2.0, 3.0], [10.0, 20.0, 30.0]) SELECT f;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("f").unwrap());
-    assert!(f > 0.0, "F_TEST alias should return positive value, got {}", f);
+    assert!(
+        f > 0.0,
+        "F_TEST alias should return positive value, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_f_test_higher_var_first() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // var([10,20,30]) = 100, var([1,2,3]) = 1 => F~100
-    let mut p = Parser::new(r#"QUERY t COMPUTE f = F_TEST([10.0, 20.0, 30.0], [1.0, 2.0, 3.0]) SELECT f;"#);
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE f = F_TEST([10.0, 20.0, 30.0], [1.0, 2.0, 3.0]) SELECT f;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("f").unwrap());
     assert!((f - 100.0).abs() < 1.0, "F should be ~100, got {}", f);
@@ -314,8 +535,16 @@ fn test_f_test_higher_var_first() {
 #[test]
 fn test_chi_squared_gof_perfect_fit() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = CHI_SQUARED_GOF([10.0, 20.0, 30.0], [10.0, 20.0, 30.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = CHI_SQUARED_GOF([10.0, 20.0, 30.0], [10.0, 20.0, 30.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -329,8 +558,16 @@ fn test_chi_squared_gof_perfect_fit() {
 #[test]
 fn test_chi_squared_gof_bad_fit() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = CHI_SQ_TEST([50.0, 5.0, 5.0], [20.0, 20.0, 20.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = CHI_SQ_TEST([50.0, 5.0, 5.0], [20.0, 20.0, 20.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -346,9 +583,17 @@ fn test_chi_squared_gof_bad_fit() {
 #[test]
 fn test_chi_squared_independence_basic() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // 2x2 table with some association
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = CHI_SQUARED_INDEPENDENCE([[10.0, 20.0], [20.0, 10.0]]) SELECT res;"#);
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = CHI_SQUARED_INDEPENDENCE([[10.0, 20.0], [20.0, 10.0]]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -364,8 +609,16 @@ fn test_chi_squared_independence_basic() {
 #[test]
 fn test_chi_sq_independence_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = CHI_SQ_INDEPENDENCE([[10.0, 10.0], [10.0, 10.0]]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = CHI_SQ_INDEPENDENCE([[10.0, 10.0], [10.0, 10.0]]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -381,8 +634,15 @@ fn test_chi_sq_independence_alias() {
 #[test]
 fn test_mann_whitney_basic() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = MANN_WHITNEY([1.0, 2.0], [3.0, 4.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE res = MANN_WHITNEY([1.0, 2.0], [3.0, 4.0]) SELECT res;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -396,8 +656,16 @@ fn test_mann_whitney_basic() {
 #[test]
 fn test_mann_whitney_test_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = MANN_WHITNEY_TEST([10.0, 20.0], [1.0, 2.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = MANN_WHITNEY_TEST([10.0, 20.0], [1.0, 2.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -413,8 +681,16 @@ fn test_mann_whitney_test_alias() {
 #[test]
 fn test_wilcoxon_identical_arrays() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = WILCOXON_SIGNED_RANK([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = WILCOXON_SIGNED_RANK([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -428,13 +704,25 @@ fn test_wilcoxon_identical_arrays() {
 #[test]
 fn test_wilcoxon_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = WILCOXON([1.0, 2.0, 3.0, 4.0, 5.0], [0.0, 0.0, 0.0, 0.0, 0.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = WILCOXON([1.0, 2.0, 3.0, 4.0, 5.0], [0.0, 0.0, 0.0, 0.0, 0.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
             let w = get_obj_float(obj, "w_stat");
-            assert!(w > 0.0, "WILCOXON alias: all positive diffs => W>0, got {}", w);
+            assert!(
+                w > 0.0,
+                "WILCOXON alias: all positive diffs => W>0, got {}",
+                w
+            );
         }
         other => panic!("Expected Object, got {:?}", other),
     }
@@ -445,8 +733,16 @@ fn test_wilcoxon_alias() {
 #[test]
 fn test_kruskal_wallis_same_groups() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = KRUSKAL_WALLIS([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = KRUSKAL_WALLIS([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -460,8 +756,16 @@ fn test_kruskal_wallis_same_groups() {
 #[test]
 fn test_kruskal_h_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = KRUSKAL_H([[1.0, 2.0], [10.0, 11.0], [20.0, 21.0]]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = KRUSKAL_H([[1.0, 2.0], [10.0, 11.0], [20.0, 21.0]]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -477,15 +781,25 @@ fn test_kruskal_h_alias() {
 #[test]
 fn test_runs_test_alternating() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // Alternating above/below median => many runs
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = RUNS_TEST([1.0, 10.0, 1.0, 10.0, 1.0, 10.0]) SELECT res;"#);
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = RUNS_TEST([1.0, 10.0, 1.0, 10.0, 1.0, 10.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
             let runs = obj.get("runs").unwrap();
             match runs {
-                Value::Integer(r) => assert!(*r >= 2, "alternating should give multiple runs, got {}", r),
+                Value::Integer(r) => {
+                    assert!(*r >= 2, "alternating should give multiple runs, got {}", r)
+                }
                 _ => panic!("Expected Integer for runs, got {:?}", runs),
             }
         }
@@ -496,13 +810,27 @@ fn test_runs_test_alternating() {
 #[test]
 fn test_wald_wolfowitz_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = WALD_WOLFOWITZ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = WALD_WOLFOWITZ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
-            assert!(obj.contains_key("runs"), "WALD_WOLFOWITZ alias should return runs");
-            assert!(obj.contains_key("expected_runs"), "should have expected_runs");
+            assert!(
+                obj.contains_key("runs"),
+                "WALD_WOLFOWITZ alias should return runs"
+            );
+            assert!(
+                obj.contains_key("expected_runs"),
+                "should have expected_runs"
+            );
         }
         other => panic!("Expected Object, got {:?}", other),
     }
@@ -513,18 +841,38 @@ fn test_wald_wolfowitz_alias() {
 #[test]
 fn test_linear_regression_perfect_fit() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // y = 2x + 1
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = LINEAR_REGRESSION([1.0, 2.0, 3.0, 4.0, 5.0], [3.0, 5.0, 7.0, 9.0, 11.0]) SELECT res;"#);
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = LINEAR_REGRESSION([1.0, 2.0, 3.0, 4.0, 5.0], [3.0, 5.0, 7.0, 9.0, 11.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
             let slope = get_obj_float(obj, "slope");
             let intercept = get_obj_float(obj, "intercept");
             let r2 = get_obj_float(obj, "r_squared");
-            assert!((slope - 2.0).abs() < 0.001, "slope should be 2, got {}", slope);
-            assert!((intercept - 1.0).abs() < 0.001, "intercept should be 1, got {}", intercept);
-            assert!((r2 - 1.0).abs() < 0.001, "R2 should be 1 for perfect fit, got {}", r2);
+            assert!(
+                (slope - 2.0).abs() < 0.001,
+                "slope should be 2, got {}",
+                slope
+            );
+            assert!(
+                (intercept - 1.0).abs() < 0.001,
+                "intercept should be 1, got {}",
+                intercept
+            );
+            assert!(
+                (r2 - 1.0).abs() < 0.001,
+                "R2 should be 1 for perfect fit, got {}",
+                r2
+            );
         }
         other => panic!("Expected Object, got {:?}", other),
     }
@@ -533,8 +881,16 @@ fn test_linear_regression_perfect_fit() {
 #[test]
 fn test_linreg_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = LINREG([0.0, 1.0, 2.0], [0.0, 1.0, 2.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = LINREG([0.0, 1.0, 2.0], [0.0, 1.0, 2.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -549,22 +905,46 @@ fn test_linreg_alias() {
 #[test]
 fn test_predict_linear_on_line() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // y = 3x + 2, predict at x=10 => 32
-    let mut p = Parser::new(r#"QUERY t COMPUTE yhat = PREDICT_LINEAR([0.0, 1.0, 2.0, 3.0], [2.0, 5.0, 8.0, 11.0], 10.0) SELECT yhat;"#);
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE yhat = PREDICT_LINEAR([0.0, 1.0, 2.0, 3.0], [2.0, 5.0, 8.0, 11.0], 10.0) SELECT yhat;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("yhat").unwrap());
-    assert!((f - 32.0).abs() < 0.001, "predict at x=10 for y=3x+2 should be 32, got {}", f);
+    assert!(
+        (f - 32.0).abs() < 0.001,
+        "predict at x=10 for y=3x+2 should be 32, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_linreg_predict_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE yhat = LINREG_PREDICT([0.0, 1.0, 2.0], [0.0, 2.0, 4.0], 5.0) SELECT yhat;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE yhat = LINREG_PREDICT([0.0, 1.0, 2.0], [0.0, 2.0, 4.0], 5.0) SELECT yhat;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("yhat").unwrap());
-    assert!((f - 10.0).abs() < 0.001, "LINREG_PREDICT: y=2x, predict at 5 => 10, got {}", f);
+    assert!(
+        (f - 10.0).abs() < 0.001,
+        "LINREG_PREDICT: y=2x, predict at 5 => 10, got {}",
+        f
+    );
 }
 
 // ── REGRESSION_RESIDUALS ──────────────────────────────────────────────────────
@@ -572,15 +952,27 @@ fn test_linreg_predict_alias() {
 #[test]
 fn test_residuals_zero_for_perfect_fit() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = REGRESSION_RESIDUALS([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = REGRESSION_RESIDUALS([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
             assert_eq!(arr.len(), 3, "should have 3 residuals");
             for r in arr {
                 let f = get_float(r);
-                assert!(f.abs() < 0.001, "residuals should be ~0 for perfect fit, got {}", f);
+                assert!(
+                    f.abs() < 0.001,
+                    "residuals should be ~0 for perfect fit, got {}",
+                    f
+                );
             }
         }
         other => panic!("Expected Array, got {:?}", other),
@@ -590,8 +982,16 @@ fn test_residuals_zero_for_perfect_fit() {
 #[test]
 fn test_residuals_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = RESIDUALS([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 5.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = RESIDUALS([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0, 5.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Array(arr)) => {
@@ -606,9 +1006,17 @@ fn test_residuals_alias() {
 #[test]
 fn test_poly_reg_linear() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // y = 2x + 1 => coeffs should be [1, 2]
-    let mut p = Parser::new(r#"QUERY t COMPUTE coeffs = POLYNOMIAL_REGRESSION([0.0, 1.0, 2.0, 3.0], [1.0, 3.0, 5.0, 7.0], 1) SELECT coeffs;"#);
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE coeffs = POLYNOMIAL_REGRESSION([0.0, 1.0, 2.0, 3.0], [1.0, 3.0, 5.0, 7.0], 1) SELECT coeffs;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("coeffs") {
         Some(Value::Array(arr)) => {
@@ -625,8 +1033,16 @@ fn test_poly_reg_linear() {
 #[test]
 fn test_poly_reg_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE coeffs = POLY_REG([0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 4.0, 9.0, 16.0], 2) SELECT coeffs;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE coeffs = POLY_REG([0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 1.0, 4.0, 9.0, 16.0], 2) SELECT coeffs;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("coeffs") {
         Some(Value::Array(arr)) => {
@@ -641,16 +1057,28 @@ fn test_poly_reg_alias() {
 #[test]
 fn test_rolling_linreg_basic() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // y=2x, window=3 => every window gives slope=2
-    let mut p = Parser::new(r#"QUERY t COMPUTE slopes = MOVING_REGRESSION([0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 2.0, 4.0, 6.0, 8.0], 3) SELECT slopes;"#);
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE slopes = MOVING_REGRESSION([0.0, 1.0, 2.0, 3.0, 4.0], [0.0, 2.0, 4.0, 6.0, 8.0], 3) SELECT slopes;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("slopes") {
         Some(Value::Array(arr)) => {
             assert_eq!(arr.len(), 3, "5 points, window=3 => 3 slopes");
             for s in arr {
                 let f = get_float(s);
-                assert!((f - 2.0).abs() < 0.001, "each window slope should be 2, got {}", f);
+                assert!(
+                    (f - 2.0).abs() < 0.001,
+                    "each window slope should be 2, got {}",
+                    f
+                );
             }
         }
         other => panic!("Expected Array, got {:?}", other),
@@ -660,8 +1088,16 @@ fn test_rolling_linreg_basic() {
 #[test]
 fn test_rolling_linreg_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE slopes = ROLLING_LINREG([1.0, 2.0, 3.0, 4.0], [2.0, 4.0, 6.0, 8.0], 2) SELECT slopes;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE slopes = ROLLING_LINREG([1.0, 2.0, 3.0, 4.0], [2.0, 4.0, 6.0, 8.0], 2) SELECT slopes;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("slopes") {
         Some(Value::Array(arr)) => {
@@ -676,21 +1112,42 @@ fn test_rolling_linreg_alias() {
 #[test]
 fn test_anderson_darling_returns_float() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE a2 = ANDERSON_DARLING([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]) SELECT a2;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE a2 = ANDERSON_DARLING([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]) SELECT a2;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("a2").unwrap());
-    assert!(f.is_finite(), "Anderson-Darling should return finite value, got {}", f);
+    assert!(
+        f.is_finite(),
+        "Anderson-Darling should return finite value, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_ad_test_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE a2 = AD_TEST([0.0, 1.0, 2.0, 3.0, 4.0]) SELECT a2;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE a2 = AD_TEST([0.0, 1.0, 2.0, 3.0, 4.0]) SELECT a2;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("a2") {
-        Some(v) => { let _ = get_float(v); }
+        Some(v) => {
+            let _ = get_float(v);
+        }
         None => panic!("AD_TEST alias should return a value"),
     }
 }
@@ -700,21 +1157,45 @@ fn test_ad_test_alias() {
 #[test]
 fn test_shapiro_wilk_range() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE w = SHAPIRO_WILK_APPROX([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]) SELECT w;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE w = SHAPIRO_WILK_APPROX([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]) SELECT w;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("w").unwrap());
-    assert!(f >= 0.0 && f <= 1.0, "Shapiro W should be in [0,1], got {}", f);
+    assert!(
+        f >= 0.0 && f <= 1.0,
+        "Shapiro W should be in [0,1], got {}",
+        f
+    );
 }
 
 #[test]
 fn test_shapiro_test_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE w = SHAPIRO_TEST([1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 3.0]) SELECT w;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE w = SHAPIRO_TEST([1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 3.0]) SELECT w;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("w").unwrap());
-    assert!(f >= 0.0 && f <= 1.0, "SHAPIRO_TEST alias: W in [0,1], got {}", f);
+    assert!(
+        f >= 0.0 && f <= 1.0,
+        "SHAPIRO_TEST alias: W in [0,1], got {}",
+        f
+    );
 }
 
 // ── JARQUE_BERA ───────────────────────────────────────────────────────────────
@@ -722,9 +1203,17 @@ fn test_shapiro_test_alias() {
 #[test]
 fn test_jarque_bera_normal_data() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     // Roughly normal data => small JB stat
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = JARQUE_BERA([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]) SELECT res;"#);
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = JARQUE_BERA([-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -739,8 +1228,16 @@ fn test_jarque_bera_normal_data() {
 #[test]
 fn test_jb_test_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE res = JB_TEST([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]) SELECT res;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE res = JB_TEST([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]) SELECT res;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     match res.rows[0].data.get("res") {
         Some(Value::Object(obj)) => {
@@ -755,21 +1252,44 @@ fn test_jb_test_alias() {
 #[test]
 fn test_lilliefors_test_range() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE d = LILLIEFORS_TEST([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]) SELECT d;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE d = LILLIEFORS_TEST([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]) SELECT d;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("d").unwrap());
-    assert!(f >= 0.0 && f <= 1.0, "Lilliefors D should be in [0,1], got {}", f);
+    assert!(
+        f >= 0.0 && f <= 1.0,
+        "Lilliefors D should be in [0,1], got {}",
+        f
+    );
 }
 
 #[test]
 fn test_ks_normality_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE d = KS_NORMALITY([1.0, 2.0, 3.0, 4.0, 5.0]) SELECT d;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE d = KS_NORMALITY([1.0, 2.0, 3.0, 4.0, 5.0]) SELECT d;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("d").unwrap());
-    assert!(f >= 0.0 && f <= 1.0, "KS_NORMALITY alias: D in [0,1], got {}", f);
+    assert!(
+        f >= 0.0 && f <= 1.0,
+        "KS_NORMALITY alias: D in [0,1], got {}",
+        f
+    );
 }
 
 // ── COHENS_D ──────────────────────────────────────────────────────────────────
@@ -777,8 +1297,16 @@ fn test_ks_normality_alias() {
 #[test]
 fn test_cohens_d_zero_effect() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE d = COHENS_D_EFFECT([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT d;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE d = COHENS_D_EFFECT([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT d;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("d").unwrap());
     assert!(f.abs() < 0.001, "same distributions => d=0, got {}", f);
@@ -787,8 +1315,16 @@ fn test_cohens_d_zero_effect() {
 #[test]
 fn test_cohens_d_large_effect() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE d = COHEN_D([1.0, 2.0, 3.0], [10.0, 11.0, 12.0]) SELECT d;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE d = COHEN_D([1.0, 2.0, 3.0], [10.0, 11.0, 12.0]) SELECT d;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("d").unwrap());
     assert!(f.abs() > 3.0, "large gap => |d|>3, got {}", f);
@@ -799,21 +1335,45 @@ fn test_cohens_d_large_effect() {
 #[test]
 fn test_hedges_g_small_sample_correction() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE g = HEDGES_G([10.0, 11.0, 12.0], [1.0, 2.0, 3.0]) SELECT g;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE g = HEDGES_G([10.0, 11.0, 12.0], [1.0, 2.0, 3.0]) SELECT g;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("g").unwrap());
-    assert!(f > 0.0, "Hedges g should be positive when grp1 > grp2, got {}", f);
+    assert!(
+        f > 0.0,
+        "Hedges g should be positive when grp1 > grp2, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_effect_size_g_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE g = EFFECT_SIZE_G([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT g;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE g = EFFECT_SIZE_G([1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]) SELECT g;"#,
+    );
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("g").unwrap());
-    assert!(f.abs() < 0.001, "EFFECT_SIZE_G: same distributions => g~0, got {}", f);
+    assert!(
+        f.abs() < 0.001,
+        "EFFECT_SIZE_G: same distributions => g~0, got {}",
+        f
+    );
 }
 
 // ── ETA_SQUARED ───────────────────────────────────────────────────────────────
@@ -821,17 +1381,33 @@ fn test_effect_size_g_alias() {
 #[test]
 fn test_eta_squared_basic() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE eta = ETA_SQUARED(50.0, 100.0) SELECT eta;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("eta").unwrap());
-    assert!((f - 0.5).abs() < 0.001, "SS_between=50, SS_total=100 => eta^2=0.5, got {}", f);
+    assert!(
+        (f - 0.5).abs() < 0.001,
+        "SS_between=50, SS_total=100 => eta^2=0.5, got {}",
+        f
+    );
 }
 
 #[test]
 fn test_eta_sq_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE eta = ETA_SQ(20.0, 100.0) SELECT eta;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("eta").unwrap());
@@ -843,8 +1419,15 @@ fn test_eta_sq_alias() {
 #[test]
 fn test_omega_squared_basic() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE omega = OMEGA_SQUARED(5.0, 2.0, 30.0) SELECT omega;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE omega = OMEGA_SQUARED(5.0, 2.0, 30.0) SELECT omega;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("omega").unwrap());
     assert!(f > 0.0 && f < 1.0, "omega^2 should be in (0,1), got {}", f);
@@ -853,11 +1436,21 @@ fn test_omega_squared_basic() {
 #[test]
 fn test_omega_sq_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE omega = OMEGA_SQ(10.0, 3.0, 60.0) SELECT omega;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("omega").unwrap());
-    assert!(f > 0.0 && f < 1.0, "OMEGA_SQ alias: value in (0,1), got {}", f);
+    assert!(
+        f > 0.0 && f < 1.0,
+        "OMEGA_SQ alias: value in (0,1), got {}",
+        f
+    );
 }
 
 // ── COHENS_H ──────────────────────────────────────────────────────────────────
@@ -865,7 +1458,13 @@ fn test_omega_sq_alias() {
 #[test]
 fn test_cohens_h_zero_effect() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE h = COHENS_H(0.5, 0.5) SELECT h;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("h").unwrap());
@@ -875,9 +1474,19 @@ fn test_cohens_h_zero_effect() {
 #[test]
 fn test_cohens_h_prop_alias() {
     let (_dir, db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"dummy": 1})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"dummy": 1}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE h = COHENS_H_PROP(0.8, 0.2) SELECT h;"#);
     let res = ex.execute(p.parse().unwrap()).unwrap();
     let f = get_float(res.rows[0].data.get("h").unwrap());
-    assert!(f > 0.5, "COHENS_H_PROP: 0.8 vs 0.2 should give h>0.5, got {}", f);
+    assert!(
+        f > 0.5,
+        "COHENS_H_PROP: 0.8 vs 0.2 should give h>0.5, got {}",
+        f
+    );
 }

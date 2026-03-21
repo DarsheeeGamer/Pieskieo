@@ -1,5 +1,8 @@
 /// Integration tests for PQL built-in financial math functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -12,7 +15,8 @@ fn setup() -> (tempfile::TempDir, Arc<PieskieoDb>, Executor) {
 }
 
 fn seed(db: &Arc<PieskieoDb>) {
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"x": 1})).unwrap();
+    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"x": 1}))
+        .unwrap();
 }
 
 // ── NPV / IRR / PMT / FV / PV ────────────────────────────────────────────────
@@ -34,7 +38,8 @@ fn test_npv_basic() {
 fn test_net_present_value_alias() {
     let (_dir, db, ex) = setup();
     seed(&db);
-    let mut p = Parser::new("QUERY t COMPUTE n = NET_PRESENT_VALUE(0.1, [100.0, 100.0, 100.0]) SELECT n;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE n = NET_PRESENT_VALUE(0.1, [100.0, 100.0, 100.0]) SELECT n;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("n") {
         Some(Value::Float(f)) => assert!(*f > 248.0 && *f < 249.5, "expected ~248.69, got {}", f),
@@ -59,7 +64,9 @@ fn test_irr_basic() {
 fn test_internal_rate_of_return_alias() {
     let (_dir, db, ex) = setup();
     seed(&db);
-    let mut p = Parser::new("QUERY t COMPUTE r = INTERNAL_RATE_OF_RETURN([-1000.0, 400.0, 400.0, 400.0]) SELECT r;");
+    let mut p = Parser::new(
+        "QUERY t COMPUTE r = INTERNAL_RATE_OF_RETURN([-1000.0, 400.0, 400.0, 400.0]) SELECT r;",
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("r") {
         Some(Value::Float(f)) => assert!(*f > 0.09 && *f < 0.11, "expected ~9.7% IRR, got {}", f),
@@ -77,7 +84,11 @@ fn test_pmt_basic() {
     match r.rows[0].data.get("pay") {
         Some(Value::Float(f)) => {
             // Payment should be negative (outflow), magnitude ~88.85
-            assert!(f.abs() > 88.0 && f.abs() < 90.0, "expected ~-88.85, got {}", f);
+            assert!(
+                f.abs() > 88.0 && f.abs() < 90.0,
+                "expected ~-88.85, got {}",
+                f
+            );
         }
         other => panic!("expected Float, got {:?}", other),
     }
@@ -90,7 +101,11 @@ fn test_loan_payment_alias() {
     let mut p = Parser::new("QUERY t COMPUTE pay = LOAN_PAYMENT(0.01, 12, 1000.0) SELECT pay;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pay") {
-        Some(Value::Float(f)) => assert!(f.abs() > 88.0 && f.abs() < 90.0, "expected ~88.85, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.abs() > 88.0 && f.abs() < 90.0,
+            "expected ~88.85, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -103,7 +118,11 @@ fn test_fv_basic() {
     let mut p = Parser::new("QUERY t COMPUTE f = FV(0.05, 10, 0.0, -1000.0) SELECT f;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("f") {
-        Some(Value::Float(f)) => assert!(f.abs() > 1620.0 && f.abs() < 1640.0, "expected ~1628.89, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.abs() > 1620.0 && f.abs() < 1640.0,
+            "expected ~1628.89, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -115,7 +134,11 @@ fn test_future_value_alias() {
     let mut p = Parser::new("QUERY t COMPUTE f = FUTURE_VALUE(0.05, 10, 0.0, -1000.0) SELECT f;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("f") {
-        Some(Value::Float(f)) => assert!(f.abs() > 1620.0 && f.abs() < 1640.0, "expected ~1628.89, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.abs() > 1620.0 && f.abs() < 1640.0,
+            "expected ~1628.89, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -128,7 +151,11 @@ fn test_pv_basic() {
     let mut p = Parser::new("QUERY t COMPUTE p = PV(0.05, 10, -100.0) SELECT p;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("p") {
-        Some(Value::Float(f)) => assert!(f.abs() > 770.0 && f.abs() < 775.0, "expected ~772.17, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.abs() > 770.0 && f.abs() < 775.0,
+            "expected ~772.17, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -140,7 +167,11 @@ fn test_present_value_alias() {
     let mut p = Parser::new("QUERY t COMPUTE p = PRESENT_VALUE(0.05, 10, -100.0) SELECT p;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("p") {
-        Some(Value::Float(f)) => assert!(f.abs() > 770.0 && f.abs() < 775.0, "expected ~772.17, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.abs() > 770.0 && f.abs() < 775.0,
+            "expected ~772.17, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -155,7 +186,9 @@ fn test_compound_interest_basic() {
     let mut p = Parser::new("QUERY t COMPUTE a = COMPOUND_INTEREST(1000.0, 0.05, 10) SELECT a;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("a") {
-        Some(Value::Float(f)) => assert!(*f > 1628.0 && *f < 1630.0, "expected ~1628.89, got {}", f),
+        Some(Value::Float(f)) => {
+            assert!(*f > 1628.0 && *f < 1630.0, "expected ~1628.89, got {}", f)
+        }
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -167,7 +200,9 @@ fn test_cagr_amount_alias() {
     let mut p = Parser::new("QUERY t COMPUTE a = CAGR_AMOUNT(1000.0, 0.05, 10) SELECT a;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("a") {
-        Some(Value::Float(f)) => assert!(*f > 1628.0 && *f < 1630.0, "expected ~1628.89, got {}", f),
+        Some(Value::Float(f)) => {
+            assert!(*f > 1628.0 && *f < 1630.0, "expected ~1628.89, got {}", f)
+        }
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -214,7 +249,8 @@ fn test_cagr_basic() {
 fn test_compound_annual_growth_alias() {
     let (_dir, db, ex) = setup();
     seed(&db);
-    let mut p = Parser::new("QUERY t COMPUTE c = COMPOUND_ANNUAL_GROWTH(100.0, 200.0, 10) SELECT c;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE c = COMPOUND_ANNUAL_GROWTH(100.0, 200.0, 10) SELECT c;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
         Some(Value::Float(f)) => assert!(*f > 0.071 && *f < 0.073, "expected ~7.18%, got {}", f),
@@ -258,7 +294,11 @@ fn test_bond_price_at_par() {
     let mut p = Parser::new("QUERY t COMPUTE bp = BOND_PRICE(1000.0, 0.05, 0.05, 10) SELECT bp;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("bp") {
-        Some(Value::Float(f)) => assert!((*f - 1000.0).abs() < 1.0, "expected ~1000.0 (at par), got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 1000.0).abs() < 1.0,
+            "expected ~1000.0 (at par), got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -267,7 +307,8 @@ fn test_bond_price_at_par() {
 fn test_bond_present_value_alias() {
     let (_dir, db, ex) = setup();
     seed(&db);
-    let mut p = Parser::new("QUERY t COMPUTE bp = BOND_PRESENT_VALUE(1000.0, 0.05, 0.05, 10) SELECT bp;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE bp = BOND_PRESENT_VALUE(1000.0, 0.05, 0.05, 10) SELECT bp;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("bp") {
         Some(Value::Float(f)) => assert!((*f - 1000.0).abs() < 1.0, "expected ~1000.0, got {}", f),
@@ -283,7 +324,11 @@ fn test_bond_price_discount() {
     let mut p = Parser::new("QUERY t COMPUTE bp = BOND_PRICE(1000.0, 0.05, 0.08, 10) SELECT bp;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("bp") {
-        Some(Value::Float(f)) => assert!(*f < 1000.0, "discount bond price should be < 1000, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f < 1000.0,
+            "discount bond price should be < 1000, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -296,7 +341,11 @@ fn test_bond_price_premium() {
     let mut p = Parser::new("QUERY t COMPUTE bp = BOND_PRICE(1000.0, 0.08, 0.05, 10) SELECT bp;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("bp") {
-        Some(Value::Float(f)) => assert!(*f > 1000.0, "premium bond price should be > 1000, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f > 1000.0,
+            "premium bond price should be > 1000, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -306,7 +355,8 @@ fn test_bond_yield_approx_at_par() {
     let (_dir, db, ex) = setup();
     seed(&db);
     // When price == face, approx YTM ≈ coupon_rate
-    let mut p = Parser::new("QUERY t COMPUTE y = BOND_YIELD_APPROX(1000.0, 0.05, 1000.0, 10) SELECT y;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE y = BOND_YIELD_APPROX(1000.0, 0.05, 1000.0, 10) SELECT y;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("y") {
         Some(Value::Float(f)) => assert!((*f - 0.05).abs() < 0.001, "expected ~0.05, got {}", f),
@@ -331,10 +381,13 @@ fn test_bond_yield_approx_discount() {
     let (_dir, db, ex) = setup();
     seed(&db);
     // Discount bond (price < face): approx YTM > coupon_rate
-    let mut p = Parser::new("QUERY t COMPUTE y = BOND_YIELD_APPROX(1000.0, 0.05, 900.0, 10) SELECT y;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE y = BOND_YIELD_APPROX(1000.0, 0.05, 900.0, 10) SELECT y;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("y") {
-        Some(Value::Float(f)) => assert!(*f > 0.05, "discount YTM should be > coupon rate, got {}", f),
+        Some(Value::Float(f)) => {
+            assert!(*f > 0.05, "discount YTM should be > coupon rate, got {}", f)
+        }
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -385,7 +438,9 @@ fn test_annuity_fv_basic() {
     let mut p = Parser::new("QUERY t COMPUTE afv = ANNUITY_FV(100.0, 0.05, 10) SELECT afv;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("afv") {
-        Some(Value::Float(f)) => assert!(*f > 1255.0 && *f < 1260.0, "expected ~1257.79, got {}", f),
+        Some(Value::Float(f)) => {
+            assert!(*f > 1255.0 && *f < 1260.0, "expected ~1257.79, got {}", f)
+        }
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -397,7 +452,9 @@ fn test_fv_annuity_alias() {
     let mut p = Parser::new("QUERY t COMPUTE afv = FV_ANNUITY(100.0, 0.05, 10) SELECT afv;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("afv") {
-        Some(Value::Float(f)) => assert!(*f > 1255.0 && *f < 1260.0, "expected ~1257.79, got {}", f),
+        Some(Value::Float(f)) => {
+            assert!(*f > 1255.0 && *f < 1260.0, "expected ~1257.79, got {}", f)
+        }
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -422,10 +479,16 @@ fn test_sharpe_ratio_basic() {
     let (_dir, db, ex) = setup();
     seed(&db);
     // SHARPE_RATIO([0.05, 0.10, 0.03, 0.08, 0.06], 0.02)
-    let mut p = Parser::new("QUERY t COMPUTE s = SHARPE_RATIO([0.05, 0.10, 0.03, 0.08, 0.06], 0.02) SELECT s;");
+    let mut p = Parser::new(
+        "QUERY t COMPUTE s = SHARPE_RATIO([0.05, 0.10, 0.03, 0.08, 0.06], 0.02) SELECT s;",
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("s") {
-        Some(Value::Float(f)) => assert!(*f > 0.0, "Sharpe ratio should be positive for these returns, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            *f > 0.0,
+            "Sharpe ratio should be positive for these returns, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -434,7 +497,8 @@ fn test_sharpe_ratio_basic() {
 fn test_sharpe_alias() {
     let (_dir, db, ex) = setup();
     seed(&db);
-    let mut p = Parser::new("QUERY t COMPUTE s = SHARPE([0.05, 0.10, 0.03, 0.08, 0.06], 0.02) SELECT s;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE s = SHARPE([0.05, 0.10, 0.03, 0.08, 0.06], 0.02) SELECT s;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("s") {
         Some(Value::Float(f)) => assert!(*f > 0.0, "Sharpe ratio should be positive, got {}", f),
@@ -446,7 +510,9 @@ fn test_sharpe_alias() {
 fn test_sortino_ratio_basic() {
     let (_dir, db, ex) = setup();
     seed(&db);
-    let mut p = Parser::new("QUERY t COMPUTE s = SORTINO_RATIO([0.05, -0.02, 0.08, -0.01, 0.06], 0.0) SELECT s;");
+    let mut p = Parser::new(
+        "QUERY t COMPUTE s = SORTINO_RATIO([0.05, -0.02, 0.08, -0.01, 0.06], 0.0) SELECT s;",
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("s") {
         Some(Value::Float(f)) => assert!(*f > 0.0, "Sortino ratio should be positive, got {}", f),
@@ -458,7 +524,8 @@ fn test_sortino_ratio_basic() {
 fn test_sortino_alias() {
     let (_dir, db, ex) = setup();
     seed(&db);
-    let mut p = Parser::new("QUERY t COMPUTE s = SORTINO([0.05, -0.02, 0.08, -0.01, 0.06], 0.0) SELECT s;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE s = SORTINO([0.05, -0.02, 0.08, -0.01, 0.06], 0.0) SELECT s;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("s") {
         Some(Value::Float(f)) => assert!(*f > 0.0, "Sortino ratio should be positive, got {}", f),
@@ -471,7 +538,8 @@ fn test_max_drawdown_basic() {
     let (_dir, db, ex) = setup();
     seed(&db);
     // prices [100, 120, 90, 110] => peak=120, trough=90 => DD=(120-90)/120=0.25
-    let mut p = Parser::new("QUERY t COMPUTE d = MAX_DRAWDOWN([100.0, 120.0, 90.0, 110.0]) SELECT d;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE d = MAX_DRAWDOWN([100.0, 120.0, 90.0, 110.0]) SELECT d;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
         Some(Value::Float(f)) => assert!((*f - 0.25).abs() < 0.001, "expected 0.25, got {}", f),
@@ -496,7 +564,8 @@ fn test_max_drawdown_monotone_up() {
     let (_dir, db, ex) = setup();
     seed(&db);
     // All prices rising => max drawdown = 0
-    let mut p = Parser::new("QUERY t COMPUTE d = MAX_DRAWDOWN([100.0, 110.0, 120.0, 130.0]) SELECT d;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE d = MAX_DRAWDOWN([100.0, 110.0, 120.0, 130.0]) SELECT d;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
         Some(Value::Float(f)) => assert!(*f < 0.001, "no drawdown expected, got {}", f),
@@ -520,7 +589,9 @@ fn test_var_parametric_basic() {
 fn test_value_at_risk_alias() {
     let (_dir, db, ex) = setup();
     seed(&db);
-    let mut p = Parser::new("QUERY t COMPUTE v = VALUE_AT_RISK([0.05, -0.02, 0.08, -0.03, 0.04], 0.95) SELECT v;");
+    let mut p = Parser::new(
+        "QUERY t COMPUTE v = VALUE_AT_RISK([0.05, -0.02, 0.08, -0.03, 0.04], 0.95) SELECT v;",
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("v") {
         Some(Value::Float(f)) => assert!(f.is_finite(), "VaR should be finite, got {}", f),
@@ -574,10 +645,15 @@ fn test_double_declining_depr_period0() {
     seed(&db);
     // DOUBLE_DECLINING_DEPR(10000, 0, 5, 0): rate=2/5=0.4, no periods skipped
     // depr = 10000 * 0.4 = 4000
-    let mut p = Parser::new("QUERY t COMPUTE d = DOUBLE_DECLINING_DEPR(10000.0, 0.0, 5, 0) SELECT d;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE d = DOUBLE_DECLINING_DEPR(10000.0, 0.0, 5, 0) SELECT d;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Float(f)) => assert!((*f - 4000.0).abs() < 1.0, "expected ~4000.0 for period 0, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 4000.0).abs() < 1.0,
+            "expected ~4000.0 for period 0, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -600,10 +676,15 @@ fn test_double_declining_depr_period1() {
     let (_dir, db, ex) = setup();
     seed(&db);
     // period=1 skips one period first; book after skip = 6000, depr = 6000 * 0.4 = 2400
-    let mut p = Parser::new("QUERY t COMPUTE d = DOUBLE_DECLINING_DEPR(10000.0, 0.0, 5, 1) SELECT d;");
+    let mut p =
+        Parser::new("QUERY t COMPUTE d = DOUBLE_DECLINING_DEPR(10000.0, 0.0, 5, 1) SELECT d;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("d") {
-        Some(Value::Float(f)) => assert!((*f - 2400.0).abs() < 1.0, "expected ~2400.0 for period 1, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 2400.0).abs() < 1.0,
+            "expected ~2400.0 for period 1, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -627,7 +708,9 @@ fn test_effective_tax_rate_basic() {
 fn test_eff_tax_alias() {
     let (_dir, db, ex) = setup();
     seed(&db);
-    let mut p = Parser::new("QUERY t COMPUTE etr = EFF_TAX(15000.0, [[10000.0, 0.10], [100000.0, 0.25]]) SELECT etr;");
+    let mut p = Parser::new(
+        "QUERY t COMPUTE etr = EFF_TAX(15000.0, [[10000.0, 0.10], [100000.0, 0.25]]) SELECT etr;",
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("etr") {
         Some(Value::Float(f)) => assert!((*f - 0.15).abs() < 0.001, "expected 0.15, got {}", f),
@@ -640,7 +723,9 @@ fn test_effective_tax_rate_single_bracket() {
     let (_dir, db, ex) = setup();
     seed(&db);
     // Single bracket: all income at 20%
-    let mut p = Parser::new("QUERY t COMPUTE etr = EFFECTIVE_TAX_RATE(10000.0, [[100000.0, 0.20]]) SELECT etr;");
+    let mut p = Parser::new(
+        "QUERY t COMPUTE etr = EFFECTIVE_TAX_RATE(10000.0, [[100000.0, 0.20]]) SELECT etr;",
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("etr") {
         Some(Value::Float(f)) => assert!((*f - 0.20).abs() < 0.001, "expected 0.20, got {}", f),
@@ -696,7 +781,11 @@ fn test_npv_negative_rate() {
     let mut p = Parser::new("QUERY t COMPUTE n = NPV(-0.05, [100.0, 100.0]) SELECT n;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("n") {
-        Some(Value::Float(f)) => assert!(f.is_finite(), "NPV with negative rate should be finite, got {}", f),
+        Some(Value::Float(f)) => assert!(
+            f.is_finite(),
+            "NPV with negative rate should be finite, got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -706,11 +795,24 @@ fn test_annuity_pv_consistency_with_pv() {
     let (_dir, db, ex) = setup();
     seed(&db);
     // ANNUITY_PV and PV should give consistent results for same inputs
-    let mut p = Parser::new("QUERY t COMPUTE a = ANNUITY_PV(100.0, 0.05, 10), b = PV(0.05, 10, -100.0) SELECT a, b;");
+    let mut p = Parser::new(
+        "QUERY t COMPUTE a = ANNUITY_PV(100.0, 0.05, 10), b = PV(0.05, 10, -100.0) SELECT a, b;",
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
-    let a = match r.rows[0].data.get("a") { Some(Value::Float(f)) => *f, other => panic!("expected Float for a, got {:?}", other) };
-    let b = match r.rows[0].data.get("b") { Some(Value::Float(f)) => *f, other => panic!("expected Float for b, got {:?}", other) };
-    assert!((a - b.abs()).abs() < 0.01, "ANNUITY_PV and PV should be consistent: {} vs {}", a, b.abs());
+    let a = match r.rows[0].data.get("a") {
+        Some(Value::Float(f)) => *f,
+        other => panic!("expected Float for a, got {:?}", other),
+    };
+    let b = match r.rows[0].data.get("b") {
+        Some(Value::Float(f)) => *f,
+        other => panic!("expected Float for b, got {:?}", other),
+    };
+    assert!(
+        (a - b.abs()).abs() < 0.01,
+        "ANNUITY_PV and PV should be consistent: {} vs {}",
+        a,
+        b.abs()
+    );
 }
 
 #[test]
@@ -720,9 +822,20 @@ fn test_cagr_amount_consistency_with_compound_interest() {
     // CAGR_AMOUNT and COMPOUND_INTEREST should give the same result
     let mut p = Parser::new("QUERY t COMPUTE a = CAGR_AMOUNT(1000.0, 0.07, 5), b = COMPOUND_INTEREST(1000.0, 0.07, 5) SELECT a, b;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
-    let a = match r.rows[0].data.get("a") { Some(Value::Float(f)) => *f, other => panic!("expected Float for a, got {:?}", other) };
-    let b = match r.rows[0].data.get("b") { Some(Value::Float(f)) => *f, other => panic!("expected Float for b, got {:?}", other) };
-    assert!((a - b).abs() < 0.001, "CAGR_AMOUNT and COMPOUND_INTEREST should match: {} vs {}", a, b);
+    let a = match r.rows[0].data.get("a") {
+        Some(Value::Float(f)) => *f,
+        other => panic!("expected Float for a, got {:?}", other),
+    };
+    let b = match r.rows[0].data.get("b") {
+        Some(Value::Float(f)) => *f,
+        other => panic!("expected Float for b, got {:?}", other),
+    };
+    assert!(
+        (a - b).abs() < 0.001,
+        "CAGR_AMOUNT and COMPOUND_INTEREST should match: {} vs {}",
+        a,
+        b
+    );
 }
 
 #[test]
@@ -745,9 +858,20 @@ fn test_loan_payment_consistency_with_pmt() {
     // LOAN_PAYMENT and PMT should return same result
     let mut p = Parser::new("QUERY t COMPUTE a = LOAN_PAYMENT(0.005, 360, 200000.0), b = PMT(0.005, 360, 200000.0) SELECT a, b;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
-    let a = match r.rows[0].data.get("a") { Some(Value::Float(f)) => *f, other => panic!("expected Float for a, got {:?}", other) };
-    let b = match r.rows[0].data.get("b") { Some(Value::Float(f)) => *f, other => panic!("expected Float for b, got {:?}", other) };
-    assert!((a - b).abs() < 0.001, "LOAN_PAYMENT and PMT should match: {} vs {}", a, b);
+    let a = match r.rows[0].data.get("a") {
+        Some(Value::Float(f)) => *f,
+        other => panic!("expected Float for a, got {:?}", other),
+    };
+    let b = match r.rows[0].data.get("b") {
+        Some(Value::Float(f)) => *f,
+        other => panic!("expected Float for b, got {:?}", other),
+    };
+    assert!(
+        (a - b).abs() < 0.001,
+        "LOAN_PAYMENT and PMT should match: {} vs {}",
+        a,
+        b
+    );
 }
 
 #[test]
@@ -757,7 +881,18 @@ fn test_var_parametric_99_conf() {
     // At 99% confidence, VaR should be larger than at 95%
     let mut p = Parser::new("QUERY t COMPUTE v95 = VAR_PARAMETRIC([0.05, -0.02, 0.08, -0.03, 0.04, -0.01, 0.06], 0.95), v99 = VAR_PARAMETRIC([0.05, -0.02, 0.08, -0.03, 0.04, -0.01, 0.06], 0.99) SELECT v95, v99;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
-    let v95 = match r.rows[0].data.get("v95") { Some(Value::Float(f)) => *f, other => panic!("expected Float, got {:?}", other) };
-    let v99 = match r.rows[0].data.get("v99") { Some(Value::Float(f)) => *f, other => panic!("expected Float, got {:?}", other) };
-    assert!(v99 > v95, "99% VaR ({}) should be greater than 95% VaR ({})", v99, v95);
+    let v95 = match r.rows[0].data.get("v95") {
+        Some(Value::Float(f)) => *f,
+        other => panic!("expected Float, got {:?}", other),
+    };
+    let v99 = match r.rows[0].data.get("v99") {
+        Some(Value::Float(f)) => *f,
+        other => panic!("expected Float, got {:?}", other),
+    };
+    assert!(
+        v99 > v95,
+        "99% VaR ({}) should be greater than 95% VaR ({})",
+        v99,
+        v95
+    );
 }

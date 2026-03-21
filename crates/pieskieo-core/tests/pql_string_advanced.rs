@@ -1,5 +1,8 @@
 /// Integration tests for PQL advanced string similarity, phonetic, and NLP functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -16,7 +19,13 @@ fn setup() -> (Arc<PieskieoDb>, Executor) {
 #[test]
 fn test_soundex_robert() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nm": "Robert"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nm": "Robert"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE c = SOUNDEX(nm) SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
@@ -28,7 +37,13 @@ fn test_soundex_robert() {
 #[test]
 fn test_soundex_code_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nm": "Robert"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nm": "Robert"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE c = SOUNDEX_CODE(nm) SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
@@ -40,11 +55,20 @@ fn test_soundex_code_alias() {
 #[test]
 fn test_soundex_rupert_same_as_robert() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nm": "Rupert"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nm": "Rupert"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE c = SOUNDEX(nm) SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
-        Some(Value::String(s)) => assert_eq!(s, "R163", "Rupert and Robert should share Soundex code R163"),
+        Some(Value::String(s)) => assert_eq!(
+            s, "R163",
+            "Rupert and Robert should share Soundex code R163"
+        ),
         other => panic!("expected R163, got {:?}", other),
     }
 }
@@ -54,11 +78,21 @@ fn test_soundex_rupert_same_as_robert() {
 #[test]
 fn test_nysiis_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nm": "Smith"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nm": "Smith"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE c = NYSIIS(nm) SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
-        Some(Value::String(s)) => assert!(!s.is_empty(), "NYSIIS should return non-empty string, got {:?}", s),
+        Some(Value::String(s)) => assert!(
+            !s.is_empty(),
+            "NYSIIS should return non-empty string, got {:?}",
+            s
+        ),
         other => panic!("expected string from NYSIIS, got {:?}", other),
     }
 }
@@ -66,7 +100,13 @@ fn test_nysiis_basic() {
 #[test]
 fn test_nysiis_code_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nm": "Smith"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nm": "Smith"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE c = NYSIIS_CODE(nm) SELECT c;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("c") {
@@ -80,7 +120,13 @@ fn test_nysiis_code_alias() {
 #[test]
 fn test_tokenize_words() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "hello world"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "hello world"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE toks = TOKENIZE(txt) SELECT toks;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("toks") {
@@ -96,7 +142,13 @@ fn test_tokenize_words() {
 #[test]
 fn test_str_tokenize_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "hello world"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "hello world"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE toks = STR_TOKENIZE(txt) SELECT toks;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("toks") {
@@ -110,7 +162,13 @@ fn test_str_tokenize_alias() {
 #[test]
 fn test_bigrams_abc() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "abc"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE bg = BIGRAMS(txt) SELECT bg;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("bg") {
@@ -126,7 +184,13 @@ fn test_bigrams_abc() {
 #[test]
 fn test_str_bigrams_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "abc"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE bg = STR_BIGRAMS(txt) SELECT bg;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("bg") {
@@ -140,7 +204,13 @@ fn test_str_bigrams_alias() {
 #[test]
 fn test_trigrams_abcd() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "abcd"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "abcd"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE tg = TRIGRAMS(txt) SELECT tg;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("tg") {
@@ -156,7 +226,13 @@ fn test_trigrams_abcd() {
 #[test]
 fn test_str_trigrams_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "abcd"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "abcd"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE tg = STR_TRIGRAMS(txt) SELECT tg;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("tg") {
@@ -170,7 +246,13 @@ fn test_str_trigrams_alias() {
 #[test]
 fn test_str_ngrams_3() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "abcde"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "abcde"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ng = STR_NGRAMS(txt, 3) SELECT ng;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ng") {
@@ -190,7 +272,13 @@ fn test_str_ngrams_3() {
 #[test]
 fn test_common_prefix_flower_flow() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"a": "flower", "b": "flow"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"a": "flower", "b": "flow"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE pfx = COMMON_PREFIX(a, b) SELECT pfx;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pfx") {
@@ -202,7 +290,13 @@ fn test_common_prefix_flower_flow() {
 #[test]
 fn test_longest_prefix_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"a": "flower", "b": "flow"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"a": "flower", "b": "flow"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE pfx = LONGEST_PREFIX(a, b) SELECT pfx;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pfx") {
@@ -216,7 +310,13 @@ fn test_longest_prefix_alias() {
 #[test]
 fn test_common_suffix_testing_ring() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"a": "testing", "b": "ring"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"a": "testing", "b": "ring"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sfx = COMMON_SUFFIX(a, b) SELECT sfx;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sfx") {
@@ -228,7 +328,13 @@ fn test_common_suffix_testing_ring() {
 #[test]
 fn test_longest_suffix_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"a": "testing", "b": "ring"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"a": "testing", "b": "ring"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sfx = LONGEST_SUFFIX(a, b) SELECT sfx;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("sfx") {
@@ -242,7 +348,13 @@ fn test_longest_suffix_alias() {
 #[test]
 fn test_regex_match_all_words() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "hello world"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "hello world"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ms = REGEX_MATCH_ALL(txt, "\\w+") SELECT ms;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ms") {
@@ -258,7 +370,13 @@ fn test_regex_match_all_words() {
 #[test]
 fn test_regex_find_all_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "hello world"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "hello world"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ms = REGEX_FIND_ALL(txt, "\\w+") SELECT ms;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ms") {
@@ -272,8 +390,15 @@ fn test_regex_find_all_alias() {
 #[test]
 fn test_regex_replace_all() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "hello world"})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE rep = REGEX_REPLACE_ALL(txt, "o", "0") SELECT rep;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "hello world"}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE rep = REGEX_REPLACE_ALL(txt, "o", "0") SELECT rep;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rep") {
         Some(Value::String(s)) => assert_eq!(s, "hell0 w0rld"),
@@ -286,7 +411,13 @@ fn test_regex_replace_all() {
 #[test]
 fn test_str_rotate_abc_by_1() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "abc"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE rot = STR_ROTATE(txt, 1) SELECT rot;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rot") {
@@ -298,7 +429,13 @@ fn test_str_rotate_abc_by_1() {
 #[test]
 fn test_caesar_cipher_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "abc"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "abc"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE rot = CAESAR_CIPHER(txt, 1) SELECT rot;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rot") {
@@ -310,7 +447,13 @@ fn test_caesar_cipher_alias() {
 #[test]
 fn test_str_rotate_wraps_z_to_a() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"txt": "xyz"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"txt": "xyz"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE rot = STR_ROTATE(txt, 3) SELECT rot;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rot") {
@@ -324,7 +467,13 @@ fn test_str_rotate_wraps_z_to_a() {
 #[test]
 fn test_anagram_of_listen_silent() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"a": "listen", "b": "silent"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"a": "listen", "b": "silent"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE anag = ANAGRAM_OF(a, b) SELECT anag;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("anag") {
@@ -336,7 +485,13 @@ fn test_anagram_of_listen_silent() {
 #[test]
 fn test_anagram_of_hello_world_false() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"a": "hello", "b": "world"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"a": "hello", "b": "world"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE anag = ANAGRAM_OF(a, b) SELECT anag;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("anag") {
@@ -348,7 +503,13 @@ fn test_anagram_of_hello_world_false() {
 #[test]
 fn test_is_anagram_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"a": "listen", "b": "silent"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"a": "listen", "b": "silent"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE anag = IS_ANAGRAM(a, b) SELECT anag;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("anag") {
@@ -362,7 +523,13 @@ fn test_is_anagram_alias() {
 #[test]
 fn test_abbreviate_name_john_smith() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nm": "John Smith"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nm": "John Smith"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE abbr = ABBREVIATE_NAME(nm) SELECT abbr;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("abbr") {
@@ -374,7 +541,13 @@ fn test_abbreviate_name_john_smith() {
 #[test]
 fn test_name_abbrev_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"nm": "John Smith"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nm": "John Smith"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE abbr = NAME_ABBREV(nm) SELECT abbr;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("abbr") {
@@ -388,7 +561,13 @@ fn test_name_abbrev_alias() {
 #[test]
 fn test_pluralize_cat() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"wd": "cat"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"wd": "cat"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE pl = PLURALIZE(wd) SELECT pl;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pl") {
@@ -400,7 +579,13 @@ fn test_pluralize_cat() {
 #[test]
 fn test_pluralize_city() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"wd": "city"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"wd": "city"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE pl = PLURALIZE(wd) SELECT pl;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pl") {
@@ -412,7 +597,13 @@ fn test_pluralize_city() {
 #[test]
 fn test_simple_plural_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"wd": "cat"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"wd": "cat"}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE pl = SIMPLE_PLURAL(wd) SELECT pl;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pl") {
@@ -426,7 +617,8 @@ fn test_simple_plural_alias() {
 #[test]
 fn test_nth_suffix_1_st() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 1})).unwrap();
+    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 1}))
+        .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE suf = NTH_SUFFIX(n) SELECT suf;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("suf") {
@@ -438,7 +630,8 @@ fn test_nth_suffix_1_st() {
 #[test]
 fn test_nth_suffix_2_nd() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 2})).unwrap();
+    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 2}))
+        .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE suf = NTH_SUFFIX(n) SELECT suf;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("suf") {
@@ -450,7 +643,8 @@ fn test_nth_suffix_2_nd() {
 #[test]
 fn test_nth_suffix_3_rd() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 3})).unwrap();
+    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 3}))
+        .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE suf = NTH_SUFFIX(n) SELECT suf;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("suf") {
@@ -462,7 +656,8 @@ fn test_nth_suffix_3_rd() {
 #[test]
 fn test_nth_suffix_4_th() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 4})).unwrap();
+    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 4}))
+        .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE suf = NTH_SUFFIX(n) SELECT suf;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("suf") {
@@ -474,7 +669,13 @@ fn test_nth_suffix_4_th() {
 #[test]
 fn test_nth_suffix_11_th() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 11})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"n": 11}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE suf = NTH_SUFFIX(n) SELECT suf;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("suf") {
@@ -486,7 +687,13 @@ fn test_nth_suffix_11_th() {
 #[test]
 fn test_nth_suffix_12_th() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 12})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"n": 12}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE suf = NTH_SUFFIX(n) SELECT suf;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("suf") {
@@ -498,7 +705,13 @@ fn test_nth_suffix_12_th() {
 #[test]
 fn test_nth_suffix_21_st() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"n": 21})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"n": 21}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE suf = NTH_SUFFIX(n) SELECT suf;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("suf") {

@@ -1,5 +1,8 @@
 /// Integration tests for PQL JSON/object utility built-in functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -16,8 +19,13 @@ fn setup() -> (Arc<PieskieoDb>, Executor) {
 #[test]
 fn test_json_keys_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE kk = JSON_KEYS(obj) SELECT kk;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("kk") {
@@ -33,8 +41,13 @@ fn test_json_keys_basic() {
 #[test]
 fn test_json_keys_sorted() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"z": 1, "a": 2, "m": 3}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"z": 1, "a": 2, "m": 3}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE kk = JSON_KEYS(obj) SELECT kk;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("kk") {
@@ -52,8 +65,13 @@ fn test_json_keys_sorted() {
 #[test]
 fn test_object_keys_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"x": 10, "y": 20}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"x": 10, "y": 20}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE kk = OBJECT_KEYS(obj) SELECT kk;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("kk") {
@@ -71,8 +89,13 @@ fn test_object_keys_alias() {
 #[test]
 fn test_json_values_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE vv = JSON_VALUES(obj) SELECT vv;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("vv") {
@@ -89,8 +112,13 @@ fn test_json_values_basic() {
 #[test]
 fn test_json_values_sorted_by_key() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"z": 99, "a": 11}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"z": 99, "a": 11}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE vv = JSON_VALUES(obj) SELECT vv;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("vv") {
@@ -108,8 +136,13 @@ fn test_json_values_sorted_by_key() {
 #[test]
 fn test_object_values_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"p": 5, "q": 6}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"p": 5, "q": 6}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE vv = OBJECT_VALUES(obj) SELECT vv;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("vv") {
@@ -125,8 +158,13 @@ fn test_object_values_alias() {
 #[test]
 fn test_object_entries_structure() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"data": {"k1": "v1", "k2": "v2"}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"data": {"k1": "v1", "k2": "v2"}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ee = OBJECT_ENTRIES(data) SELECT ee;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ee") {
@@ -140,8 +178,13 @@ fn test_object_entries_structure() {
 #[test]
 fn test_json_entries_returns_key_value_pairs() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE ee = JSON_ENTRIES(obj) SELECT ee;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ee") {
@@ -172,8 +215,13 @@ fn test_json_entries_returns_key_value_pairs() {
 #[test]
 fn test_object_pick_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2, "c": 3}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2, "c": 3}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE pp = OBJECT_PICK(obj, "a", "c") SELECT pp;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pp") {
@@ -190,8 +238,13 @@ fn test_object_pick_basic() {
 #[test]
 fn test_json_pick_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"x": 10, "y": 20, "z": 30}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"x": 10, "y": 20, "z": 30}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE pp = JSON_PICK(obj, "x", "z") SELECT pp;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pp") {
@@ -210,8 +263,13 @@ fn test_json_pick_alias() {
 #[test]
 fn test_object_omit_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2, "c": 3}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2, "c": 3}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE oo = OBJECT_OMIT(obj, "b") SELECT oo;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("oo") {
@@ -228,8 +286,13 @@ fn test_object_omit_basic() {
 #[test]
 fn test_json_omit_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"p": 1, "q": 2, "r": 3}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"p": 1, "q": 2, "r": 3}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE oo = JSON_OMIT(obj, "q", "r") SELECT oo;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("oo") {
@@ -247,10 +310,15 @@ fn test_json_omit_alias() {
 #[test]
 fn test_object_merge_disjoint() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1}}),
+    )
+    .unwrap();
     let mut p = Parser::new(
-        r#"QUERY t COMPUTE base = JSON_BUILD_OBJECT("a", 1) COMPUTE extra = JSON_BUILD_OBJECT("b", 2) COMPUTE merged = OBJECT_MERGE(base, extra) SELECT merged;"#
+        r#"QUERY t COMPUTE base = JSON_BUILD_OBJECT("a", 1) COMPUTE extra = JSON_BUILD_OBJECT("b", 2) COMPUTE merged = OBJECT_MERGE(base, extra) SELECT merged;"#,
     );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("merged") {
@@ -266,10 +334,15 @@ fn test_object_merge_disjoint() {
 #[test]
 fn test_json_merge_right_wins_conflict() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1}}),
+    )
+    .unwrap();
     let mut p = Parser::new(
-        r#"QUERY t COMPUTE left_obj = JSON_BUILD_OBJECT("a", 1, "b", 2) COMPUTE right_obj = JSON_BUILD_OBJECT("a", 99, "c", 3) COMPUTE merged = JSON_MERGE(left_obj, right_obj) SELECT merged;"#
+        r#"QUERY t COMPUTE left_obj = JSON_BUILD_OBJECT("a", 1, "b", 2) COMPUTE right_obj = JSON_BUILD_OBJECT("a", 99, "c", 3) COMPUTE merged = JSON_MERGE(left_obj, right_obj) SELECT merged;"#,
     );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("merged") {
@@ -288,8 +361,13 @@ fn test_json_merge_right_wins_conflict() {
 #[test]
 fn test_object_invert_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": "x", "b": "y"}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": "x", "b": "y"}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE inv = OBJECT_INVERT(obj) SELECT inv;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("inv") {
@@ -305,8 +383,13 @@ fn test_object_invert_basic() {
 #[test]
 fn test_swap_keys_values_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"foo": "bar"}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"foo": "bar"}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE inv = SWAP_KEYS_VALUES(obj) SELECT inv;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("inv") {
@@ -322,8 +405,13 @@ fn test_swap_keys_values_alias() {
 #[test]
 fn test_json_size_object() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sz = JSON_SIZE(obj) SELECT sz;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("sz"), Some(&Value::Integer(2)));
@@ -332,8 +420,13 @@ fn test_json_size_object() {
 #[test]
 fn test_object_size_array() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"arr": [1, 2, 3, 4]})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"arr": [1, 2, 3, 4]}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sz = OBJECT_SIZE(arr) SELECT sz;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("sz"), Some(&Value::Integer(4)));
@@ -344,8 +437,13 @@ fn test_object_size_array() {
 #[test]
 fn test_json_depth_empty_object() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE dd = JSON_DEPTH(obj) SELECT dd;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("dd"), Some(&Value::Integer(1)));
@@ -354,8 +452,13 @@ fn test_json_depth_empty_object() {
 #[test]
 fn test_json_depth_nested() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": {"b": 1}}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": {"b": 1}}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE dd = JSON_DEPTH(obj) SELECT dd;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("dd"), Some(&Value::Integer(2)));
@@ -364,8 +467,13 @@ fn test_json_depth_nested() {
 #[test]
 fn test_object_depth_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": {"b": {"c": 42}}}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": {"b": {"c": 42}}}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE dd = OBJECT_DEPTH(obj) SELECT dd;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("dd"), Some(&Value::Integer(3)));
@@ -376,8 +484,13 @@ fn test_object_depth_alias() {
 #[test]
 fn test_json_flatten_nested() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": {"b": 1}}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": {"b": 1}}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE flat = JSON_FLATTEN(obj) SELECT flat;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("flat") {
@@ -392,8 +505,13 @@ fn test_json_flatten_nested() {
 #[test]
 fn test_flatten_object_already_flat() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"x": 1, "y": 2}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"x": 1, "y": 2}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE flat = FLATTEN_OBJECT(obj) SELECT flat;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("flat") {
@@ -411,9 +529,16 @@ fn test_flatten_object_already_flat() {
 #[test]
 fn test_object_rename_key_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2}})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE renamed = OBJECT_RENAME_KEY(obj, "a", "alpha") SELECT renamed;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2}}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE renamed = OBJECT_RENAME_KEY(obj, "a", "alpha") SELECT renamed;"#,
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("renamed") {
         Some(Value::Object(obj)) => {
@@ -428,9 +553,16 @@ fn test_object_rename_key_basic() {
 #[test]
 fn test_json_rename_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"old_name": "Alice"}})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE renamed = JSON_RENAME(obj, "old_name", "name") SELECT renamed;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"old_name": "Alice"}}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE renamed = JSON_RENAME(obj, "old_name", "name") SELECT renamed;"#,
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("renamed") {
         Some(Value::Object(obj)) => {
@@ -447,9 +579,15 @@ fn test_json_rename_alias() {
 #[test]
 fn test_object_map_values_scale() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"nv": {"a": 2, "b": 3}})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE scaled = OBJECT_MAP_VALUES(nv, 2.0) SELECT scaled;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": {"a": 2, "b": 3}}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE scaled = OBJECT_MAP_VALUES(nv, 2.0) SELECT scaled;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("scaled") {
         Some(Value::Object(obj)) => {
@@ -463,8 +601,13 @@ fn test_object_map_values_scale() {
 #[test]
 fn test_json_map_values_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"nv": {"x": 10, "y": 5}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": {"x": 10, "y": 5}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE scaled = JSON_MAP_VALUES(nv, 3.0) SELECT scaled;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("scaled") {
@@ -479,9 +622,15 @@ fn test_json_map_values_alias() {
 #[test]
 fn test_object_map_values_non_numeric_passthrough() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"nv": {"label": "hello", "count": 5}})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE scaled = OBJECT_MAP_VALUES(nv, 2.0) SELECT scaled;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"nv": {"label": "hello", "count": 5}}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE scaled = OBJECT_MAP_VALUES(nv, 2.0) SELECT scaled;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("scaled") {
         Some(Value::Object(obj)) => {
@@ -499,8 +648,13 @@ fn test_object_map_values_non_numeric_passthrough() {
 #[test]
 fn test_json_contains_key_true() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE has = JSON_CONTAINS_KEY(obj, "a") SELECT has;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("has"), Some(&Value::Bool(true)));
@@ -509,8 +663,13 @@ fn test_json_contains_key_true() {
 #[test]
 fn test_json_contains_key_false() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE has = JSON_CONTAINS_KEY(obj, "b") SELECT has;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("has"), Some(&Value::Bool(false)));
@@ -519,8 +678,13 @@ fn test_json_contains_key_false() {
 #[test]
 fn test_has_key_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"name": "Bob"}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"name": "Bob"}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE has = HAS_KEY(obj, "name") SELECT has;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("has"), Some(&Value::Bool(true)));
@@ -531,9 +695,15 @@ fn test_has_key_alias() {
 #[test]
 fn test_object_filter_nulls_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": null, "c": "hello"}})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE compacted = OBJECT_FILTER_NULLS(obj) SELECT compacted;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": null, "c": "hello"}}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE compacted = OBJECT_FILTER_NULLS(obj) SELECT compacted;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("compacted") {
         Some(Value::Object(obj)) => {
@@ -549,8 +719,13 @@ fn test_object_filter_nulls_basic() {
 #[test]
 fn test_compact_object_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"x": null, "y": 42}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"x": null, "y": 42}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE compacted = COMPACT_OBJECT(obj) SELECT compacted;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("compacted") {
@@ -566,9 +741,15 @@ fn test_compact_object_alias() {
 #[test]
 fn test_object_filter_nulls_no_nulls() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2}})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE compacted = OBJECT_FILTER_NULLS(obj) SELECT compacted;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2}}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE compacted = OBJECT_FILTER_NULLS(obj) SELECT compacted;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("compacted") {
         Some(Value::Object(obj)) => {
@@ -583,8 +764,13 @@ fn test_object_filter_nulls_no_nulls() {
 #[test]
 fn test_array_to_object_kv_basic() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"kv": [["a", 1], ["b", 2]]})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"kv": [["a", 1], ["b", 2]]}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE obj = ARRAY_TO_OBJECT_KV(kv) SELECT obj;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("obj") {
@@ -600,8 +786,13 @@ fn test_array_to_object_kv_basic() {
 #[test]
 fn test_pairs_to_object_alias() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"kv": [["name", "Alice"], ["score", 95]]})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"kv": [["name", "Alice"], ["score", 95]]}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE obj = PAIRS_TO_OBJECT(kv) SELECT obj;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("obj") {
@@ -618,8 +809,13 @@ fn test_pairs_to_object_alias() {
 #[test]
 fn test_json_keys_single_key() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"only": true}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"only": true}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE kk = JSON_KEYS(obj) SELECT kk;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("kk") {
@@ -634,8 +830,13 @@ fn test_json_keys_single_key() {
 #[test]
 fn test_json_depth_scalar_is_zero() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": {"b": {"c": {"d": 1}}}}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": {"b": {"c": {"d": 1}}}}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE dd = JSON_DEPTH(obj) SELECT dd;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     // obj has depth 4: {a: {b: {c: {d: 1}}}}
@@ -645,8 +846,13 @@ fn test_json_depth_scalar_is_zero() {
 #[test]
 fn test_json_size_three_keys() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2, "c": 3}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2, "c": 3}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE sz = JSON_SIZE(obj) SELECT sz;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert_eq!(r.rows[0].data.get("sz"), Some(&Value::Integer(3)));
@@ -655,10 +861,15 @@ fn test_json_size_three_keys() {
 #[test]
 fn test_object_merge_single_key_each() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1}}),
+    )
+    .unwrap();
     let mut p = Parser::new(
-        r#"QUERY t COMPUTE left_obj = JSON_BUILD_OBJECT("a", 1) COMPUTE right_obj = JSON_BUILD_OBJECT("b", 2) COMPUTE merged = JSON_MERGE(left_obj, right_obj) SELECT merged;"#
+        r#"QUERY t COMPUTE left_obj = JSON_BUILD_OBJECT("a", 1) COMPUTE right_obj = JSON_BUILD_OBJECT("b", 2) COMPUTE merged = JSON_MERGE(left_obj, right_obj) SELECT merged;"#,
     );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("merged") {
@@ -672,8 +883,13 @@ fn test_object_merge_single_key_each() {
 #[test]
 fn test_object_invert_integer_values() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"first": 1, "second": 2}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"first": 1, "second": 2}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE inv = OBJECT_INVERT(obj) SELECT inv;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("inv") {
@@ -689,8 +905,13 @@ fn test_object_invert_integer_values() {
 #[test]
 fn test_array_to_object_kv_three_pairs() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"kv": [["x", 10], ["y", 20], ["z", 30]]})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"kv": [["x", 10], ["y", 20], ["z", 30]]}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE obj = ARRAY_TO_OBJECT_KV(kv) SELECT obj;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("obj") {
@@ -707,9 +928,15 @@ fn test_array_to_object_kv_three_pairs() {
 #[test]
 fn test_json_pick_missing_key_ignored() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1}})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE pp = JSON_PICK(obj, "a", "nonexistent") SELECT pp;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1}}),
+    )
+    .unwrap();
+    let mut p =
+        Parser::new(r#"QUERY t COMPUTE pp = JSON_PICK(obj, "a", "nonexistent") SELECT pp;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("pp") {
         Some(Value::Object(obj)) => {
@@ -723,8 +950,13 @@ fn test_json_pick_missing_key_ignored() {
 #[test]
 fn test_json_flatten_deeply_nested() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": {"b": {"c": 42}}}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": {"b": {"c": 42}}}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE flat = JSON_FLATTEN(obj) SELECT flat;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("flat") {
@@ -739,9 +971,16 @@ fn test_json_flatten_deeply_nested() {
 #[test]
 fn test_object_rename_key_preserves_other_keys() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": 1, "b": 2, "c": 3}})).unwrap();
-    let mut p = Parser::new(r#"QUERY t COMPUTE renamed = OBJECT_RENAME_KEY(obj, "b", "beta") SELECT renamed;"#);
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": 1, "b": 2, "c": 3}}),
+    )
+    .unwrap();
+    let mut p = Parser::new(
+        r#"QUERY t COMPUTE renamed = OBJECT_RENAME_KEY(obj, "b", "beta") SELECT renamed;"#,
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("renamed") {
         Some(Value::Object(obj)) => {
@@ -758,8 +997,13 @@ fn test_object_rename_key_preserves_other_keys() {
 #[test]
 fn test_compact_object_all_nulls() {
     let (db, ex) = setup();
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(),
-        serde_json::json!({"obj": {"a": null, "b": null}})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"obj": {"a": null, "b": null}}),
+    )
+    .unwrap();
     let mut p = Parser::new(r#"QUERY t COMPUTE compacted = COMPACT_OBJECT(obj) SELECT compacted;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("compacted") {

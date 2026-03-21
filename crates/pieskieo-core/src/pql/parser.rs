@@ -38,6 +38,7 @@ pub struct Parser {
     lexer: Lexer,
     current_token: Option<Token>,
     peek_token: Option<Token>,
+    alias_counter: usize,
 }
 
 impl Parser {
@@ -50,6 +51,7 @@ impl Parser {
             lexer,
             current_token: current,
             peek_token: peek,
+            alias_counter: 0,
         }
     }
 
@@ -108,7 +110,11 @@ impl Parser {
             }
         }
 
-        Ok(Statement::Query { with: vec![], source, operations })
+        Ok(Statement::Query {
+            with: vec![],
+            source,
+            operations,
+        })
     }
 
     fn parse_source_expr(&mut self) -> Result<SourceExpr, ParseError> {
@@ -258,8 +264,10 @@ impl Parser {
             None
         };
 
-        // Optional: TOP k
-        let top_k = if matches!(self.current_token, Some(Token::Top)) {
+        // Optional: TOP k or LIMIT k
+        let top_k = if matches!(self.current_token, Some(Token::Top))
+            || matches!(self.current_token, Some(Token::Limit))
+        {
             self.advance();
             self.parse_integer()? as usize
         } else {
@@ -312,33 +320,63 @@ impl Parser {
             None
         };
 
+        // Optional: DIRECTION Incoming/Outgoing/Both
+        let mut direction = TraverseDirection::Outgoing;
+        if matches!(self.current_token, Some(Token::Direction)) {
+            self.advance();
+            direction = match &self.current_token {
+                Some(Token::Incoming) => {
+                    self.advance();
+                    TraverseDirection::Incoming
+                }
+                Some(Token::Outgoing) => {
+                    self.advance();
+                    TraverseDirection::Outgoing
+                }
+                Some(Token::Both) => {
+                    self.advance();
+                    TraverseDirection::Both
+                }
+                Some(tok) => {
+                    return Err(ParseError::UnexpectedToken {
+                        expected: "INCOMING, OUTGOING, or BOTH".to_string(),
+                        found: tok.clone(),
+                    })
+                }
+                None => return Err(ParseError::UnexpectedEof),
+            };
+        }
+
         // DEPTH min [TO max]
-        self.expect(Token::Depth)?;
-        let min_depth = self.parse_integer()? as usize;
-
-        let max_depth = if matches!(self.current_token, Some(Token::To)) {
+        let mut min_depth = 1;
+        let mut max_depth = 1;
+        if matches!(self.current_token, Some(Token::Depth)) {
             self.advance();
-            self.parse_integer()? as usize
-        } else {
-            min_depth
-        };
+            min_depth = self.parse_integer()? as usize;
 
-        // Optional: direction (default: outgoing)
-        let direction = TraverseDirection::Outgoing;
+            if matches!(self.current_token, Some(Token::To)) {
+                self.advance();
+                max_depth = self.parse_integer()? as usize;
+            } else {
+                max_depth = min_depth;
+            }
+        }
 
-        // Optional: mode (SHORTEST, ALL, ANY)
-        let mode = if matches!(self.current_token, Some(Token::Shortest)) {
+        // Optional: mode (SHORTEST, ALL, ANY, BREADTH)
+        let mut mode = TraverseMode::All;
+        if matches!(self.current_token, Some(Token::Shortest)) {
             self.advance();
-            TraverseMode::Shortest
+            mode = TraverseMode::Shortest;
         } else if matches!(self.current_token, Some(Token::All)) {
             self.advance();
-            TraverseMode::All
+            mode = TraverseMode::All;
         } else if matches!(self.current_token, Some(Token::Any)) {
             self.advance();
-            TraverseMode::Any
-        } else {
-            TraverseMode::All
-        };
+            mode = TraverseMode::Any;
+        } else if matches!(self.current_token, Some(Token::Breadth)) {
+            self.advance();
+            mode = TraverseMode::Breadth;
+        }
 
         Ok(Operation::Traverse {
             edge_type,
@@ -353,13 +391,218 @@ impl Parser {
     fn parse_match(&mut self) -> Result<Operation, ParseError> {
         self.expect(Token::Match)?;
 
-        // Simplified graph pattern parsing (can be expanded)
-        let pattern = GraphPattern {
-            nodes: Vec::new(),
-            edges: Vec::new(),
+        let mut nodes = Vec::new();
+        let mut edges = Vec::new();
+
+        let mut node = self.parse_node_pattern()?;
+        if node.alias.is_none() {
+            node.alias = Some(self.next_alias());
+        }
+        let last_node_alias_val = node.alias.clone().unwrap();
+        let mut last_node_alias = last_node_alias_val;
+        nodes.push(node);
+
+        loop {
+            match &self.current_token {
+                Some(Token::Minus) => {
+                    self.advance();
+                    if matches!(self.current_token, Some(Token::LeftBracket)) {
+                        // -[r]
+                        self.advance();
+                        let mut edge = self.parse_edge_pattern_inner()?;
+                        self.expect(Token::RightBracket)?;
+
+                        let dir = if matches!(self.current_token, Some(Token::Arrow)) {
+                            self.advance();
+                            TraverseDirection::Outgoing
+                        } else if matches!(self.current_token, Some(Token::Minus)) {
+                            self.advance();
+                            TraverseDirection::Both
+                        } else {
+                            return Err(ParseError::UnexpectedToken {
+                                expected: "-> or -".to_string(),
+                                found: self.current_token.clone().unwrap_or(Token::Eof),
+                            });
+                        };
+
+                        let mut next_node = self.parse_node_pattern()?;
+                        if next_node.alias.is_none() {
+                            next_node.alias = Some(self.next_alias());
+                        }
+                        let next_alias = next_node.alias.clone().unwrap();
+
+                        edge.source = last_node_alias.clone();
+                        edge.target = next_alias.clone();
+                        edge.direction = dir;
+
+                        edges.push(edge);
+                        nodes.push(next_node);
+                        last_node_alias = next_alias;
+                    } else if matches!(self.current_token, Some(Token::Arrow)) {
+                        // ->
+                        self.advance();
+                        let mut next_node = self.parse_node_pattern()?;
+                        if next_node.alias.is_none() {
+                            next_node.alias = Some(self.next_alias());
+                        }
+                        let next_alias = next_node.alias.clone().unwrap();
+
+                        edges.push(EdgePattern {
+                            alias: None,
+                            edge_type: None,
+                            properties: None,
+                            source: last_node_alias.clone(),
+                            target: next_alias.clone(),
+                            direction: TraverseDirection::Outgoing,
+                        });
+
+                        nodes.push(next_node);
+                        last_node_alias = next_alias;
+                    } else if matches!(self.current_token, Some(Token::LeftParen)) {
+                        // -(node)
+                        let mut next_node = self.parse_node_pattern()?;
+                        if next_node.alias.is_none() {
+                            next_node.alias = Some(self.next_alias());
+                        }
+                        let next_alias = next_node.alias.clone().unwrap();
+
+                        edges.push(EdgePattern {
+                            alias: None,
+                            edge_type: None,
+                            properties: None,
+                            source: last_node_alias.clone(),
+                            target: next_alias.clone(),
+                            direction: TraverseDirection::Both,
+                        });
+
+                        nodes.push(next_node);
+                        last_node_alias = next_alias;
+                    } else {
+                        break;
+                    }
+                }
+                Some(Token::BackArrow) => {
+                    self.advance();
+                    // Must be <-[r]- or <-(node)
+                    if matches!(self.current_token, Some(Token::LeftBracket)) {
+                        self.advance();
+                        let mut edge = self.parse_edge_pattern_inner()?;
+                        self.expect(Token::RightBracket)?;
+                        self.expect(Token::Minus)?;
+
+                        let mut next_node = self.parse_node_pattern()?;
+                        if next_node.alias.is_none() {
+                            next_node.alias = Some(self.next_alias());
+                        }
+                        let next_alias = next_node.alias.clone().unwrap();
+
+                        edge.source = last_node_alias.clone();
+                        edge.target = next_alias.clone();
+                        edge.direction = TraverseDirection::Incoming;
+
+                        edges.push(edge);
+                        nodes.push(next_node);
+                        last_node_alias = next_alias;
+                    } else {
+                        let mut next_node = self.parse_node_pattern()?;
+                        if next_node.alias.is_none() {
+                            next_node.alias = Some(self.next_alias());
+                        }
+                        let next_alias = next_node.alias.clone().unwrap();
+
+                        edges.push(EdgePattern {
+                            alias: None,
+                            edge_type: None,
+                            properties: None,
+                            source: last_node_alias.clone(),
+                            target: next_alias.clone(),
+                            direction: TraverseDirection::Incoming,
+                        });
+
+                        nodes.push(next_node);
+                        last_node_alias = next_alias;
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        Ok(Operation::Match {
+            pattern: GraphPattern { nodes, edges },
+        })
+    }
+
+    fn next_alias(&mut self) -> String {
+        let alias = format!("__n{}", self.alias_counter);
+        self.alias_counter += 1;
+        alias
+    }
+
+    fn parse_node_pattern(&mut self) -> Result<NodePattern, ParseError> {
+        self.expect(Token::LeftParen)?;
+
+        let alias = if let Some(Token::Identifier(_)) = &self.current_token {
+            Some(self.parse_identifier()?)
+        } else {
+            None
         };
 
-        Ok(Operation::Match { pattern })
+        let mut labels = Vec::new();
+        while matches!(self.current_token, Some(Token::Colon)) {
+            self.advance();
+            labels.push(self.parse_identifier()?);
+        }
+
+        let properties = if matches!(self.current_token, Some(Token::LeftBrace)) {
+            if let Expression::Object(fields) = self.parse_primary_expr()? {
+                Some(Expression::Object(fields))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        self.expect(Token::RightParen)?;
+        Ok(NodePattern {
+            alias,
+            labels,
+            properties,
+        })
+    }
+
+    fn parse_edge_pattern_inner(&mut self) -> Result<EdgePattern, ParseError> {
+        let alias = if let Some(Token::Identifier(_)) = &self.current_token {
+            Some(self.parse_identifier()?)
+        } else {
+            None
+        };
+
+        let edge_type = if matches!(self.current_token, Some(Token::Colon)) {
+            self.advance();
+            Some(self.parse_identifier()?)
+        } else {
+            None
+        };
+
+        let properties = if matches!(self.current_token, Some(Token::LeftBrace)) {
+            if let Expression::Object(fields) = self.parse_primary_expr()? {
+                Some(Expression::Object(fields))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok(EdgePattern {
+            alias,
+            edge_type,
+            properties,
+            source: String::new(),                  // set by caller
+            target: String::new(),                  // set by caller
+            direction: TraverseDirection::Outgoing, // set by caller
+        })
     }
 
     fn parse_join(&mut self) -> Result<Operation, ParseError> {
@@ -428,7 +671,10 @@ impl Parser {
             self.advance();
         }
 
-        Ok(Operation::GroupBy { fields, mode: crate::pql::ast::GroupByMode::Regular })
+        Ok(Operation::GroupBy {
+            fields,
+            mode: crate::pql::ast::GroupByMode::Regular,
+        })
     }
 
     fn parse_compute(&mut self) -> Result<Operation, ParseError> {
@@ -759,26 +1005,647 @@ impl Parser {
 
     fn parse_insert(&mut self) -> Result<Statement, ParseError> {
         self.expect(Token::Insert)?;
-        // Implementation for INSERT
-        Err(ParseError::Custom("INSERT not yet implemented".to_string()))
+        self.expect(Token::Into)?;
+
+        let target = self.parse_identifier()?;
+
+        // Parse column list if present: (col1, col2, ...)
+        let columns = if matches!(self.current_token, Some(Token::LeftParen)) {
+            self.advance();
+            let mut cols = Vec::new();
+            loop {
+                cols.push(self.parse_identifier()?);
+                if matches!(self.current_token, Some(Token::Comma)) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            self.expect(Token::RightParen)?;
+            Some(cols)
+        } else {
+            None
+        };
+
+        // Expect VALUES keyword
+        if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "VALUES")
+        {
+            return Err(ParseError::UnexpectedToken {
+                expected: "VALUES".to_string(),
+                found: self.current_token.clone().unwrap_or(Token::Eof),
+            });
+        }
+        self.advance();
+
+        // Parse value rows: (val1, val2, ...), (val1, val2, ...)
+        let mut rows = Vec::new();
+        loop {
+            self.expect(Token::LeftParen)?;
+            let mut values = Vec::new();
+            loop {
+                let expr = self.parse_expression()?;
+                values.push(expr);
+                if matches!(self.current_token, Some(Token::Comma)) {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            self.expect(Token::RightParen)?;
+
+            // Convert values to (column, expression) pairs
+            let row = if let Some(ref cols) = columns {
+                if cols.len() != values.len() {
+                    return Err(ParseError::Custom(format!(
+                        "Column count mismatch: {} columns, {} values",
+                        cols.len(),
+                        values.len()
+                    )));
+                }
+                cols.iter().cloned().zip(values).collect()
+            } else {
+                // No column list - values must be in order
+                values
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, v)| (format!("col{}", i), v))
+                    .collect()
+            };
+            rows.push(row);
+
+            if matches!(self.current_token, Some(Token::Comma)) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        // Parse ON CONFLICT clause if present
+        let on_conflict = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "ON")
+        {
+            self.advance();
+            if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "CONFLICT")
+            {
+                return Err(ParseError::Custom("Expected CONFLICT after ON".to_string()));
+            }
+            self.advance();
+
+            // Parse conflict target if present
+            let target = if matches!(self.current_token, Some(Token::LeftParen)) {
+                self.advance();
+                let mut cols = Vec::new();
+                loop {
+                    cols.push(self.parse_identifier()?);
+                    if matches!(self.current_token, Some(Token::Comma)) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                self.expect(Token::RightParen)?;
+                Some(cols)
+            } else {
+                None
+            };
+
+            // Parse DO NOTHING or DO UPDATE
+            if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "DO")
+            {
+                return Err(ParseError::Custom(
+                    "Expected DO after ON CONFLICT".to_string(),
+                ));
+            }
+            self.advance();
+
+            let action = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "NOTHING")
+            {
+                self.advance();
+                ConflictAction::DoNothing
+            } else if matches!(self.current_token, Some(Token::Update)) {
+                self.advance();
+                self.expect(Token::Set)?;
+
+                let mut assignments = Vec::new();
+                loop {
+                    let col = self.parse_identifier()?;
+                    self.expect(Token::Equals)?;
+                    let expr = self.parse_expression()?;
+                    assignments.push((col, expr));
+
+                    if matches!(self.current_token, Some(Token::Comma)) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+
+                ConflictAction::DoUpdate { assignments }
+            } else {
+                return Err(ParseError::Custom(
+                    "Expected NOTHING or UPDATE after DO".to_string(),
+                ));
+            };
+
+            Some(OnConflict { target, action })
+        } else {
+            None
+        };
+
+        // Parse RETURNING clause if present
+        let returning = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "RETURNING")
+        {
+            self.advance();
+            Some(self.parse_select_fields()?)
+        } else {
+            None
+        };
+
+        Ok(Statement::Insert {
+            target,
+            rows,
+            on_conflict,
+            returning,
+        })
     }
 
     fn parse_update(&mut self) -> Result<Statement, ParseError> {
         self.expect(Token::Update)?;
-        // Implementation for UPDATE
-        Err(ParseError::Custom("UPDATE not yet implemented".to_string()))
+
+        let target = self.parse_identifier()?;
+
+        // Parse FROM clause if present (for joins in UPDATE)
+        let from_source = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "FROM")
+        {
+            self.advance();
+            Some(self.parse_identifier()?)
+        } else {
+            None
+        };
+
+        self.expect(Token::Set)?;
+
+        // Parse SET assignments: col1 = expr1, col2 = expr2, ...
+        let mut assignments = Vec::new();
+        loop {
+            let col = self.parse_identifier()?;
+            self.expect(Token::Equals)?;
+            let expr = self.parse_expression()?;
+            assignments.push((col, expr));
+
+            if matches!(self.current_token, Some(Token::Comma)) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        // Parse WHERE clause if present
+        let filter = if matches!(self.current_token, Some(Token::Where)) {
+            self.advance();
+            Some(self.parse_condition()?)
+        } else {
+            None
+        };
+
+        // Parse RETURNING clause if present
+        let returning = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "RETURNING")
+        {
+            self.advance();
+            Some(self.parse_select_fields()?)
+        } else {
+            None
+        };
+
+        Ok(Statement::Update {
+            target,
+            assignments,
+            filter,
+            returning,
+            from_source,
+        })
     }
 
     fn parse_delete(&mut self) -> Result<Statement, ParseError> {
         self.expect(Token::Delete)?;
-        // Implementation for DELETE
-        Err(ParseError::Custom("DELETE not yet implemented".to_string()))
+
+        // Expect FROM keyword
+        if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "FROM")
+        {
+            return Err(ParseError::UnexpectedToken {
+                expected: "FROM".to_string(),
+                found: self.current_token.clone().unwrap_or(Token::Eof),
+            });
+        }
+        self.advance();
+
+        let target = self.parse_identifier()?;
+
+        // Parse WHERE clause if present
+        let filter = if matches!(self.current_token, Some(Token::Where)) {
+            self.advance();
+            Some(self.parse_condition()?)
+        } else {
+            None
+        };
+
+        // Parse RETURNING clause if present
+        let returning = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "RETURNING")
+        {
+            self.advance();
+            Some(self.parse_select_fields()?)
+        } else {
+            None
+        };
+
+        Ok(Statement::Delete {
+            target,
+            filter,
+            returning,
+        })
     }
 
     fn parse_create(&mut self) -> Result<Statement, ParseError> {
         self.expect(Token::Create)?;
-        // Implementation for CREATE
-        Err(ParseError::Custom("CREATE not yet implemented".to_string()))
+
+        // Determine what we're creating
+        match &self.current_token {
+            Some(Token::Identifier(s)) if s.to_uppercase() == "TABLE" => {
+                self.advance();
+                self.parse_create_table()
+            }
+            Some(Token::Identifier(s)) if s.to_uppercase() == "COLLECTION" => {
+                self.advance();
+                self.parse_create_collection()
+            }
+            Some(Token::Identifier(s)) if s.to_uppercase() == "INDEX" => {
+                self.advance();
+                self.parse_create_index()
+            }
+            Some(Token::Identifier(s)) if s.to_uppercase() == "NODE" => {
+                self.advance();
+                self.parse_create_node()
+            }
+            Some(Token::Identifier(s)) if s.to_uppercase() == "EDGE" => {
+                self.advance();
+                self.parse_create_edge()
+            }
+            Some(Token::Identifier(s)) if s.to_uppercase() == "VIEW" => {
+                self.advance();
+                self.parse_create_view()
+            }
+            Some(tok) => Err(ParseError::UnexpectedToken {
+                expected: "TABLE, COLLECTION, INDEX, NODE, EDGE, or VIEW".to_string(),
+                found: tok.clone(),
+            }),
+            None => Err(ParseError::UnexpectedEof),
+        }
+    }
+
+    fn parse_create_table(&mut self) -> Result<Statement, ParseError> {
+        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "IF")
+        {
+            self.advance();
+            if !matches!(self.current_token, Some(Token::Not)) {
+                return Err(ParseError::Custom("Expected NOT after IF".to_string()));
+            }
+            self.advance();
+            if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "EXISTS")
+            {
+                return Err(ParseError::Custom(
+                    "Expected EXISTS after IF NOT".to_string(),
+                ));
+            }
+            self.advance();
+            true
+        } else {
+            false
+        };
+
+        let name = self.parse_identifier()?;
+
+        self.expect(Token::LeftParen)?;
+
+        let mut fields = Vec::new();
+        let mut constraints = Vec::new();
+
+        loop {
+            // Check if this is a constraint or a field
+            if matches!(self.current_token, Some(Token::Identifier(ref s)) 
+                if s.to_uppercase() == "PRIMARY" || s.to_uppercase() == "UNIQUE" 
+                || s.to_uppercase() == "CHECK" || s.to_uppercase() == "FOREIGN")
+            {
+                // Parse table constraint
+                constraints.push(self.parse_table_constraint()?);
+            } else {
+                // Parse field definition
+                let field_name = self.parse_identifier()?;
+                let field_type = self.parse_identifier()?;
+
+                let mut required = false;
+                let mut unique = false;
+                let mut default = None;
+
+                // Parse field constraints
+                loop {
+                    match &self.current_token {
+                        Some(Token::Not) => {
+                            self.advance();
+                            if !matches!(self.current_token, Some(Token::NullLiteral)) {
+                                return Err(ParseError::Custom(
+                                    "Expected NULL after NOT".to_string(),
+                                ));
+                            }
+                            self.advance();
+                            required = true;
+                        }
+                        Some(Token::Identifier(s)) if s.to_uppercase() == "UNIQUE" => {
+                            self.advance();
+                            unique = true;
+                        }
+                        Some(Token::Identifier(s)) if s.to_uppercase() == "DEFAULT" => {
+                            self.advance();
+                            default = Some(self.parse_expression()?);
+                        }
+                        _ => break,
+                    }
+                }
+
+                fields.push(FieldDef {
+                    name: field_name,
+                    field_type,
+                    required,
+                    unique,
+                    default,
+                });
+            }
+
+            if matches!(self.current_token, Some(Token::Comma)) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        self.expect(Token::RightParen)?;
+
+        Ok(Statement::Create(CreateStatement::Table {
+            name,
+            if_not_exists,
+            fields,
+            constraints,
+        }))
+    }
+
+    fn parse_create_collection(&mut self) -> Result<Statement, ParseError> {
+        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "IF")
+        {
+            self.advance();
+            self.advance(); // NOT
+            self.advance(); // EXISTS
+            true
+        } else {
+            false
+        };
+
+        let name = self.parse_identifier()?;
+
+        Ok(Statement::Create(CreateStatement::Collection {
+            name,
+            if_not_exists,
+        }))
+    }
+
+    fn parse_create_index(&mut self) -> Result<Statement, ParseError> {
+        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "IF")
+        {
+            self.advance();
+            self.advance(); // NOT
+            self.advance(); // EXISTS
+            true
+        } else {
+            false
+        };
+
+        let name = self.parse_identifier()?;
+
+        if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "ON")
+        {
+            return Err(ParseError::Custom(
+                "Expected ON after index name".to_string(),
+            ));
+        }
+        self.advance();
+
+        let table = self.parse_identifier()?;
+
+        // Parse index type if present
+        let index_type = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "USING")
+        {
+            self.advance();
+            let type_name = self.parse_identifier()?;
+            match type_name.to_uppercase().as_str() {
+                "BTREE" => IndexType::BTree,
+                "HASH" => IndexType::Hash,
+                "GIN" => IndexType::Gin,
+                "GIST" => IndexType::Gist,
+                "BRIN" => IndexType::Brin,
+                _ => {
+                    return Err(ParseError::Custom(format!(
+                        "Unknown index type: {}",
+                        type_name
+                    )))
+                }
+            }
+        } else {
+            IndexType::BTree
+        };
+
+        self.expect(Token::LeftParen)?;
+
+        let mut fields = Vec::new();
+        loop {
+            fields.push(self.parse_identifier()?);
+            if matches!(self.current_token, Some(Token::Comma)) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        self.expect(Token::RightParen)?;
+
+        Ok(Statement::Create(CreateStatement::Index {
+            name,
+            if_not_exists,
+            on: table,
+            fields,
+            index_type,
+        }))
+    }
+
+    fn parse_create_node(&mut self) -> Result<Statement, ParseError> {
+        // CREATE NODE (label: value, ...)
+        self.expect(Token::LeftParen)?;
+
+        let mut properties = Vec::new();
+        loop {
+            let key = self.parse_identifier()?;
+            self.expect(Token::Colon)?;
+            let value = self.parse_expression()?;
+            properties.push((key, value));
+
+            if matches!(self.current_token, Some(Token::Comma)) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        self.expect(Token::RightParen)?;
+
+        Ok(Statement::Create(CreateStatement::Node { properties }))
+    }
+
+    fn parse_create_edge(&mut self) -> Result<Statement, ParseError> {
+        // CREATE EDGE (src) -[type]-> (dst)
+        self.expect(Token::LeftParen)?;
+        let src = self.parse_expression()?;
+        self.expect(Token::RightParen)?;
+
+        self.expect(Token::Minus)?;
+        self.expect(Token::LeftBracket)?;
+        let edge_type = self.parse_identifier()?;
+        self.expect(Token::RightBracket)?;
+        self.expect(Token::Arrow)?;
+
+        self.expect(Token::LeftParen)?;
+        let dst = self.parse_expression()?;
+        self.expect(Token::RightParen)?;
+
+        let weight = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "WEIGHT")
+        {
+            self.advance();
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+
+        Ok(Statement::Create(CreateStatement::Edge {
+            src,
+            dst,
+            edge_type,
+            weight,
+        }))
+    }
+
+    fn parse_create_view(&mut self) -> Result<Statement, ParseError> {
+        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "IF")
+        {
+            self.advance();
+            self.advance(); // NOT
+            self.advance(); // EXISTS
+            true
+        } else {
+            false
+        };
+
+        let name = self.parse_identifier()?;
+
+        if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "AS")
+        {
+            return Err(ParseError::Custom(
+                "Expected AS after view name".to_string(),
+            ));
+        }
+        self.advance();
+
+        let query = Box::new(self.parse()?);
+
+        Ok(Statement::CreateView {
+            name,
+            if_not_exists,
+            query,
+        })
+    }
+
+    fn parse_table_constraint(&mut self) -> Result<ConstraintDef, ParseError> {
+        match &self.current_token {
+            Some(Token::Identifier(s)) if s.to_uppercase() == "PRIMARY" => {
+                self.advance();
+                if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "KEY")
+                {
+                    return Err(ParseError::Custom("Expected KEY after PRIMARY".to_string()));
+                }
+                self.advance();
+
+                self.expect(Token::LeftParen)?;
+                let mut fields = Vec::new();
+                loop {
+                    fields.push(self.parse_identifier()?);
+                    if matches!(self.current_token, Some(Token::Comma)) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                self.expect(Token::RightParen)?;
+
+                Ok(ConstraintDef::PrimaryKey {
+                    name: format!("pk_{}", fields.join("_")),
+                    fields,
+                })
+            }
+            Some(Token::Identifier(s)) if s.to_uppercase() == "UNIQUE" => {
+                self.advance();
+                self.expect(Token::LeftParen)?;
+                let mut fields = Vec::new();
+                loop {
+                    fields.push(self.parse_identifier()?);
+                    if matches!(self.current_token, Some(Token::Comma)) {
+                        self.advance();
+                    } else {
+                        break;
+                    }
+                }
+                self.expect(Token::RightParen)?;
+
+                Ok(ConstraintDef::Unique {
+                    name: format!("unique_{}", fields.join("_")),
+                    fields,
+                })
+            }
+            _ => Err(ParseError::Custom(
+                "Unsupported constraint type".to_string(),
+            )),
+        }
+    }
+
+    fn parse_select_fields(&mut self) -> Result<Vec<SelectField>, ParseError> {
+        let mut fields = Vec::new();
+
+        loop {
+            if matches!(self.current_token, Some(Token::Star)) {
+                self.advance();
+                fields.push(SelectField::All);
+            } else {
+                let expr = self.parse_expression()?;
+                let alias = if matches!(self.current_token, Some(Token::As)) {
+                    self.advance();
+                    Some(self.parse_identifier()?)
+                } else {
+                    None
+                };
+                fields.push(SelectField::Expression { expr, alias });
+            }
+
+            if matches!(self.current_token, Some(Token::Comma)) {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        Ok(fields)
     }
 
     fn parse_explain(&mut self) -> Result<Statement, ParseError> {
@@ -827,65 +1694,65 @@ impl Parser {
         let keyword_as_ident = match &self.current_token {
             Some(Token::Identifier(name)) => Some(name.clone()),
             // Graph / vector / schema keywords that are common as names
-            Some(Token::Nodes)     => Some("nodes".to_string()),
-            Some(Token::Edges)     => Some("edges".to_string()),
-            Some(Token::Node)      => Some("node".to_string()),
-            Some(Token::Edge)      => Some("edge".to_string()),
-            Some(Token::Path)      => Some("path".to_string()),
-            Some(Token::Match)     => Some("match".to_string()),
-            Some(Token::Index)     => Some("index".to_string()),
-            Some(Token::Table)     => Some("table".to_string()),
-            Some(Token::Type)      => Some("type".to_string()),
-            Some(Token::Vector)    => Some("vector".to_string()),
-            Some(Token::All)       => Some("all".to_string()),
-            Some(Token::Any)       => Some("any".to_string()),
-            Some(Token::Top)       => Some("top".to_string()),
-            Some(Token::Depth)     => Some("depth".to_string()),
-            Some(Token::Shortest)  => Some("shortest".to_string()),
-            Some(Token::Similar)   => Some("similar".to_string()),
-            Some(Token::To)        => Some("to".to_string()),
+            Some(Token::Nodes) => Some("nodes".to_string()),
+            Some(Token::Edges) => Some("edges".to_string()),
+            Some(Token::Node) => Some("node".to_string()),
+            Some(Token::Edge) => Some("edge".to_string()),
+            Some(Token::Path) => Some("path".to_string()),
+            Some(Token::Match) => Some("match".to_string()),
+            Some(Token::Index) => Some("index".to_string()),
+            Some(Token::Table) => Some("table".to_string()),
+            Some(Token::Type) => Some("type".to_string()),
+            Some(Token::Vector) => Some("vector".to_string()),
+            Some(Token::All) => Some("all".to_string()),
+            Some(Token::Any) => Some("any".to_string()),
+            Some(Token::Top) => Some("top".to_string()),
+            Some(Token::Depth) => Some("depth".to_string()),
+            Some(Token::Shortest) => Some("shortest".to_string()),
+            Some(Token::Similar) => Some("similar".to_string()),
+            Some(Token::To) => Some("to".to_string()),
             Some(Token::Threshold) => Some("threshold".to_string()),
-            Some(Token::Metric)    => Some("metric".to_string()),
+            Some(Token::Metric) => Some("metric".to_string()),
             Some(Token::Embedding) => Some("embedding".to_string()),
-            Some(Token::Traverse)  => Some("traverse".to_string()),
-            Some(Token::Compute)   => Some("compute".to_string()),
-            Some(Token::Distinct)  => Some("distinct".to_string()),
-            Some(Token::Asc)       => Some("asc".to_string()),
-            Some(Token::Desc)      => Some("desc".to_string()),
-            Some(Token::Offset)    => Some("offset".to_string()),
-            Some(Token::Limit)     => Some("limit".to_string()),
-            Some(Token::Inner)     => Some("inner".to_string()),
-            Some(Token::Full)      => Some("full".to_string()),
-            Some(Token::Cross)     => Some("cross".to_string()),
-            Some(Token::Join)      => Some("join".to_string()),
-            Some(Token::On)        => Some("on".to_string()),
-            Some(Token::As)        => Some("as".to_string()),
-            Some(Token::In)        => Some("in".to_string()),
-            Some(Token::Is)        => Some("is".to_string()),
-            Some(Token::Between)   => Some("between".to_string()),
-            Some(Token::Exists)    => Some("exists".to_string()),
-            Some(Token::Left)      => Some("left".to_string()),
-            Some(Token::Right)     => Some("right".to_string()),
-            Some(Token::Unique)    => Some("unique".to_string()),
-            Some(Token::Check)     => Some("check".to_string()),
+            Some(Token::Traverse) => Some("traverse".to_string()),
+            Some(Token::Compute) => Some("compute".to_string()),
+            Some(Token::Distinct) => Some("distinct".to_string()),
+            Some(Token::Asc) => Some("asc".to_string()),
+            Some(Token::Desc) => Some("desc".to_string()),
+            Some(Token::Offset) => Some("offset".to_string()),
+            Some(Token::Limit) => Some("limit".to_string()),
+            Some(Token::Inner) => Some("inner".to_string()),
+            Some(Token::Full) => Some("full".to_string()),
+            Some(Token::Cross) => Some("cross".to_string()),
+            Some(Token::Join) => Some("join".to_string()),
+            Some(Token::On) => Some("on".to_string()),
+            Some(Token::As) => Some("as".to_string()),
+            Some(Token::In) => Some("in".to_string()),
+            Some(Token::Is) => Some("is".to_string()),
+            Some(Token::Between) => Some("between".to_string()),
+            Some(Token::Exists) => Some("exists".to_string()),
+            Some(Token::Left) => Some("left".to_string()),
+            Some(Token::Right) => Some("right".to_string()),
+            Some(Token::Unique) => Some("unique".to_string()),
+            Some(Token::Check) => Some("check".to_string()),
             Some(Token::References) => Some("references".to_string()),
             Some(Token::Constraint) => Some("constraint".to_string()),
             Some(Token::ForeignKey) => Some("foreign_key".to_string()),
             Some(Token::PrimaryKey) => Some("primary_key".to_string()),
-            Some(Token::Explain)   => Some("explain".to_string()),
-            Some(Token::String_)   => Some("string".to_string()),
-            Some(Token::Integer_)  => Some("integer".to_string()),
-            Some(Token::Float_)    => Some("float".to_string()),
-            Some(Token::Boolean_)  => Some("boolean".to_string()),
-            Some(Token::Date_)     => Some("date".to_string()),
+            Some(Token::Explain) => Some("explain".to_string()),
+            Some(Token::String_) => Some("string".to_string()),
+            Some(Token::Integer_) => Some("integer".to_string()),
+            Some(Token::Float_) => Some("float".to_string()),
+            Some(Token::Boolean_) => Some("boolean".to_string()),
+            Some(Token::Date_) => Some("date".to_string()),
             Some(Token::Timestamp_) => Some("timestamp".to_string()),
-            Some(Token::Uuid_)     => Some("uuid".to_string()),
-            Some(Token::Json_)     => Some("json".to_string()),
-            Some(Token::Bytes_)    => Some("bytes".to_string()),
-            Some(Token::GroupBy)   => Some("group_by".to_string()),
-            Some(Token::OrderBy)   => Some("order_by".to_string()),
+            Some(Token::Uuid_) => Some("uuid".to_string()),
+            Some(Token::Json_) => Some("json".to_string()),
+            Some(Token::Bytes_) => Some("bytes".to_string()),
+            Some(Token::GroupBy) => Some("group_by".to_string()),
+            Some(Token::OrderBy) => Some("order_by".to_string()),
             // Null literal used as field name
-            Some(Token::Null)      => Some("null".to_string()),
+            Some(Token::Null) => Some("null".to_string()),
             _ => None,
         };
         if let Some(name) = keyword_as_ident {
@@ -964,7 +1831,10 @@ mod tests {
         assert!(result.is_ok());
         let stmt = result.unwrap();
 
-        if let Statement::Query { source, operations, .. } = stmt {
+        if let Statement::Query {
+            source, operations, ..
+        } = stmt
+        {
             assert_eq!(source, SourceExpr::Collection("users".to_string()));
             assert_eq!(operations.len(), 2); // WHERE + SELECT
         } else {
@@ -1069,6 +1939,34 @@ mod tests {
                 assert_eq!(*offset, Some(20));
             } else {
                 panic!("Expected Limit operation");
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_match() {
+        let input = "QUERY users MATCH (a:User {name: 'Alice'})-[:FOLLOWS]->(b:User) SELECT a.name, b.name;";
+        let mut parser = Parser::new(input);
+        let result = parser.parse();
+
+        if let Err(e) = &result {
+            eprintln!("Parse error: {:?}", e);
+        }
+        assert!(result.is_ok());
+        let stmt = result.unwrap();
+
+        if let Statement::Query { operations, .. } = stmt {
+            if let Operation::Match { pattern } = &operations[0] {
+                assert_eq!(pattern.nodes.len(), 2);
+                assert_eq!(pattern.edges.len(), 1);
+                assert_eq!(pattern.nodes[0].alias, Some("a".to_string()));
+                assert_eq!(pattern.nodes[0].labels, vec!["User".to_string()]);
+                assert_eq!(pattern.edges[0].edge_type, Some("FOLLOWS".to_string()));
+                assert_eq!(pattern.edges[0].source, "a".to_string());
+                assert_eq!(pattern.edges[0].target, "b".to_string());
+                assert_eq!(pattern.edges[0].direction, TraverseDirection::Outgoing);
+            } else {
+                panic!("Expected Match operation");
             }
         }
     }

@@ -1,5 +1,8 @@
 /// Integration tests for PQL text/NLP analytics functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -9,7 +12,13 @@ fn test_ngrams() {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"text": "the quick brown fox"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"text": "the quick brown fox"}),
+    )
+    .unwrap();
 
     let mut p = Parser::new(r#"QUERY t COMPUTE ng = NGRAMS(text, 2) SELECT ng;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
@@ -27,12 +36,20 @@ fn test_term_freq() {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"text": "cat cat dog cat dog"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"text": "cat cat dog cat dog"}),
+    )
+    .unwrap();
 
     let mut p = Parser::new(r#"QUERY t COMPUTE tf = TERM_FREQ(text, "cat") SELECT tf;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("tf") {
-        Some(Value::Float(f)) => assert!((*f - 0.6).abs() < 0.01, "cat freq = 3/5 = 0.6, got {}", f),
+        Some(Value::Float(f)) => {
+            assert!((*f - 0.6).abs() < 0.01, "cat freq = 3/5 = 0.6, got {}", f)
+        }
         other => panic!("expected float, got {:?}", other),
     }
 }
@@ -42,7 +59,13 @@ fn test_unique_words() {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"text": "apple orange apple banana"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"text": "apple orange apple banana"}),
+    )
+    .unwrap();
 
     let mut p = Parser::new(r#"QUERY t COMPUTE uw = UNIQUE_WORDS(text) SELECT uw;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
@@ -55,7 +78,13 @@ fn test_text_entropy() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     // Uniform distribution has max entropy
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"text": "aabbccdd"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"text": "aabbccdd"}),
+    )
+    .unwrap();
 
     let mut p = Parser::new(r#"QUERY t COMPUTE e = TEXT_ENTROPY(text) SELECT e;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
@@ -70,7 +99,13 @@ fn test_sentence_count() {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"text": "Hello world. How are you? I am fine!"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"text": "Hello world. How are you? I am fine!"}),
+    )
+    .unwrap();
 
     let mut p = Parser::new(r#"QUERY t COMPUTE sc = SENTENCE_COUNT(text) SELECT sc;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
@@ -82,7 +117,13 @@ fn test_word_frequency_map() {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"text": "cat dog cat"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"text": "cat dog cat"}),
+    )
+    .unwrap();
 
     let mut p = Parser::new(r#"QUERY t COMPUTE m = WORD_FREQUENCY_MAP(text) SELECT m;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
@@ -101,12 +142,20 @@ fn test_lexical_diversity() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     // 2 unique words out of 4 total
-    db.put_doc_ns(None, Some("t"), Uuid::new_v4(), serde_json::json!({"text": "cat dog cat dog"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("t"),
+        Uuid::new_v4(),
+        serde_json::json!({"text": "cat dog cat dog"}),
+    )
+    .unwrap();
 
     let mut p = Parser::new(r#"QUERY t COMPUTE ld = LEXICAL_DIVERSITY(text) SELECT ld;"#);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("ld") {
-        Some(Value::Float(f)) => assert!((*f - 0.5).abs() < 0.01, "diversity = 2/4 = 0.5, got {}", f),
+        Some(Value::Float(f)) => {
+            assert!((*f - 0.5).abs() < 0.01, "diversity = 2/4 = 0.5, got {}", f)
+        }
         other => panic!("expected float, got {:?}", other),
     }
 }

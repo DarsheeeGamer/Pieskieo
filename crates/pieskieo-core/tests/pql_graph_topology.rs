@@ -1,5 +1,8 @@
 /// Integration tests for graph topology and network analysis functions.
-use pieskieo_core::{pql::{Executor, Parser, Value}, PieskieoDb};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -12,9 +15,27 @@ fn make_triangle() -> (Arc<PieskieoDb>, Executor, Uuid, Uuid, Uuid) {
     let id1 = Uuid::new_v4();
     let id2 = Uuid::new_v4();
     let id3 = Uuid::new_v4();
-    db.put_doc_ns(None, Some("g"), id1, serde_json::json!({"nid": id1.to_string()})).unwrap();
-    db.put_doc_ns(None, Some("g"), id2, serde_json::json!({"nid": id2.to_string()})).unwrap();
-    db.put_doc_ns(None, Some("g"), id3, serde_json::json!({"nid": id3.to_string()})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("g"),
+        id1,
+        serde_json::json!({"nid": id1.to_string()}),
+    )
+    .unwrap();
+    db.put_doc_ns(
+        None,
+        Some("g"),
+        id2,
+        serde_json::json!({"nid": id2.to_string()}),
+    )
+    .unwrap();
+    db.put_doc_ns(
+        None,
+        Some("g"),
+        id3,
+        serde_json::json!({"nid": id3.to_string()}),
+    )
+    .unwrap();
     db.add_edge(id1, id2, 1.0).unwrap();
     db.add_edge(id2, id3, 1.0).unwrap();
     db.add_edge(id3, id1, 1.0).unwrap();
@@ -53,7 +74,13 @@ fn test_clustering_coefficient_isolated_node() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     let id = Uuid::new_v4();
-    db.put_doc_ns(None, Some("iso"), id, serde_json::json!({"nid": id.to_string()})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("iso"),
+        id,
+        serde_json::json!({"nid": id.to_string()}),
+    )
+    .unwrap();
     let query = format!(
         r#"QUERY iso COMPUTE cc = CLUSTERING_COEFFICIENT("{}") SELECT cc;"#,
         id
@@ -99,7 +126,11 @@ fn test_graph_triangles_in_triangle() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty(), "should have at least one result row");
     match r.rows[0].data.get("t") {
-        Some(Value::Integer(n)) => assert!(*n >= 1, "triangle node should have >= 1 triangle, got {}", n),
+        Some(Value::Integer(n)) => assert!(
+            *n >= 1,
+            "triangle node should have >= 1 triangle, got {}",
+            n
+        ),
         other => panic!("expected Integer, got {:?}", other),
     }
 }
@@ -113,9 +144,12 @@ fn test_graph_triangles_no_triangle() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("chain"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("chain"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("chain"), c, serde_json::json!({"name": "C"})).unwrap();
+    db.put_doc_ns(None, Some("chain"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("chain"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("chain"), c, serde_json::json!({"name": "C"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
     db.add_edge(b, c, 1.0).unwrap();
     // No edge a-c, so no triangle
@@ -145,9 +179,12 @@ fn test_graph_total_degree_path_node() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("deg"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("deg"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("deg"), c, serde_json::json!({"name": "C"})).unwrap();
+    db.put_doc_ns(None, Some("deg"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("deg"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("deg"), c, serde_json::json!({"name": "C"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
     db.add_edge(b, c, 1.0).unwrap();
 
@@ -173,8 +210,10 @@ fn test_total_degree_alias() {
     let ex = Executor::new(db.clone());
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
-    db.put_doc_ns(None, Some("td"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("td"), b, serde_json::json!({"name": "B"})).unwrap();
+    db.put_doc_ns(None, Some("td"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("td"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
 
     let query = format!(
@@ -185,7 +224,10 @@ fn test_total_degree_alias() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty());
     match r.rows[0].data.get("d") {
-        Some(Value::Integer(n)) => assert!(*n >= 1, "node with 1 out-edge should have total degree >= 1"),
+        Some(Value::Integer(n)) => assert!(
+            *n >= 1,
+            "node with 1 out-edge should have total degree >= 1"
+        ),
         other => panic!("expected Integer, got {:?}", other),
     }
 }
@@ -200,8 +242,10 @@ fn test_in_degree_alias() {
     let ex = Executor::new(db.clone());
     let src = Uuid::new_v4();
     let dst = Uuid::new_v4();
-    db.put_doc_ns(None, Some("indeg"), src, serde_json::json!({"role": "src"})).unwrap();
-    db.put_doc_ns(None, Some("indeg"), dst, serde_json::json!({"role": "dst"})).unwrap();
+    db.put_doc_ns(None, Some("indeg"), src, serde_json::json!({"role": "src"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("indeg"), dst, serde_json::json!({"role": "dst"}))
+        .unwrap();
     db.add_edge(src, dst, 1.0).unwrap();
 
     let query = format!(
@@ -211,7 +255,11 @@ fn test_in_degree_alias() {
     let mut p = Parser::new(&query);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty());
-    assert_eq!(r.rows[0].data.get("d"), Some(&Value::Integer(1)), "dst should have in-degree 1");
+    assert_eq!(
+        r.rows[0].data.get("d"),
+        Some(&Value::Integer(1)),
+        "dst should have in-degree 1"
+    );
 }
 
 #[test]
@@ -222,8 +270,20 @@ fn test_out_degree_alias() {
     let ex = Executor::new(db.clone());
     let src = Uuid::new_v4();
     let dst = Uuid::new_v4();
-    db.put_doc_ns(None, Some("outdeg"), src, serde_json::json!({"role": "src"})).unwrap();
-    db.put_doc_ns(None, Some("outdeg"), dst, serde_json::json!({"role": "dst"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("outdeg"),
+        src,
+        serde_json::json!({"role": "src"}),
+    )
+    .unwrap();
+    db.put_doc_ns(
+        None,
+        Some("outdeg"),
+        dst,
+        serde_json::json!({"role": "dst"}),
+    )
+    .unwrap();
     db.add_edge(src, dst, 1.0).unwrap();
 
     let query = format!(
@@ -233,7 +293,11 @@ fn test_out_degree_alias() {
     let mut p = Parser::new(&query);
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty());
-    assert_eq!(r.rows[0].data.get("d"), Some(&Value::Integer(1)), "src should have out-degree 1");
+    assert_eq!(
+        r.rows[0].data.get("d"),
+        Some(&Value::Integer(1)),
+        "src should have out-degree 1"
+    );
 }
 
 // ── GRAPH_NEIGHBORS_AT_DEPTH ──────────────────────────────────────────────
@@ -247,9 +311,12 @@ fn test_graph_neighbors_at_depth_1() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("nd"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("nd"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("nd"), c, serde_json::json!({"name": "C"})).unwrap();
+    db.put_doc_ns(None, Some("nd"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("nd"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("nd"), c, serde_json::json!({"name": "C"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
     db.add_edge(a, c, 1.0).unwrap();
 
@@ -277,9 +344,12 @@ fn test_graph_neighbors_at_depth_2() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("nd2"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("nd2"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("nd2"), c, serde_json::json!({"name": "C"})).unwrap();
+    db.put_doc_ns(None, Some("nd2"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("nd2"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("nd2"), c, serde_json::json!({"name": "C"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
     db.add_edge(b, c, 1.0).unwrap();
 
@@ -292,7 +362,12 @@ fn test_graph_neighbors_at_depth_2() {
     assert!(!r.rows.is_empty());
     match r.rows[0].data.get("nbrs") {
         Some(Value::Array(arr)) => {
-            assert_eq!(arr.len(), 1, "A has 1 depth-2 neighbor (C), got {}", arr.len());
+            assert_eq!(
+                arr.len(),
+                1,
+                "A has 1 depth-2 neighbor (C), got {}",
+                arr.len()
+            );
         }
         other => panic!("expected Array, got {:?}", other),
     }
@@ -309,9 +384,12 @@ fn test_graph_ego_size_radius_1() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("ego"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("ego"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("ego"), c, serde_json::json!({"name": "C"})).unwrap();
+    db.put_doc_ns(None, Some("ego"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("ego"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("ego"), c, serde_json::json!({"name": "C"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
     db.add_edge(a, c, 1.0).unwrap();
 
@@ -336,7 +414,8 @@ fn test_graph_ego_size_isolated() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     let a = Uuid::new_v4();
-    db.put_doc_ns(None, Some("egoiso"), a, serde_json::json!({"name": "A"})).unwrap();
+    db.put_doc_ns(None, Some("egoiso"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
 
     let query = format!(
         r#"QUERY egoiso COMPUTE sz = GRAPH_EGO_SIZE("{}", 2) SELECT sz;"#,
@@ -360,10 +439,18 @@ fn test_graph_node_count_collection() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     for i in 0..5 {
-        db.put_doc_ns(None, Some("nc"), Uuid::new_v4(), serde_json::json!({"i": i})).unwrap();
+        db.put_doc_ns(
+            None,
+            Some("nc"),
+            Uuid::new_v4(),
+            serde_json::json!({"i": i}),
+        )
+        .unwrap();
     }
 
-    let mut p = Parser::new(r#"QUERY nc COMPUTE g=1 GROUP BY g COMPUTE cnt = GRAPH_NODE_COUNT("nc") SELECT cnt;"#);
+    let mut p = Parser::new(
+        r#"QUERY nc COMPUTE g=1 GROUP BY g COMPUTE cnt = GRAPH_NODE_COUNT("nc") SELECT cnt;"#,
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty());
     match r.rows[0].data.get("cnt") {
@@ -384,10 +471,14 @@ fn test_graph_edge_count_outgoing() {
     let n1 = Uuid::new_v4();
     let n2 = Uuid::new_v4();
     let n3 = Uuid::new_v4();
-    db.put_doc_ns(None, Some("ec"), hub, serde_json::json!({"role": "hub"})).unwrap();
-    db.put_doc_ns(None, Some("ec"), n1, serde_json::json!({"role": "leaf"})).unwrap();
-    db.put_doc_ns(None, Some("ec"), n2, serde_json::json!({"role": "leaf"})).unwrap();
-    db.put_doc_ns(None, Some("ec"), n3, serde_json::json!({"role": "leaf"})).unwrap();
+    db.put_doc_ns(None, Some("ec"), hub, serde_json::json!({"role": "hub"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("ec"), n1, serde_json::json!({"role": "leaf"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("ec"), n2, serde_json::json!({"role": "leaf"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("ec"), n3, serde_json::json!({"role": "leaf"}))
+        .unwrap();
     db.add_edge(hub, n1, 1.0).unwrap();
     db.add_edge(hub, n2, 1.0).unwrap();
     db.add_edge(hub, n3, 1.0).unwrap();
@@ -415,7 +506,8 @@ fn test_is_isolated_true() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     let id = Uuid::new_v4();
-    db.put_doc_ns(None, Some("isol"), id, serde_json::json!({"name": "solo"})).unwrap();
+    db.put_doc_ns(None, Some("isol"), id, serde_json::json!({"name": "solo"}))
+        .unwrap();
 
     let query = format!(
         r#"QUERY isol COMPUTE iso = IS_ISOLATED("{}") SELECT iso;"#,
@@ -439,8 +531,10 @@ fn test_is_isolated_false() {
     let ex = Executor::new(db.clone());
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
-    db.put_doc_ns(None, Some("notiso"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("notiso"), b, serde_json::json!({"name": "B"})).unwrap();
+    db.put_doc_ns(None, Some("notiso"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("notiso"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
 
     let query = format!(
@@ -464,7 +558,13 @@ fn test_graph_is_isolated_alias() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     let id = Uuid::new_v4();
-    db.put_doc_ns(None, Some("gisolated"), id, serde_json::json!({"name": "x"})).unwrap();
+    db.put_doc_ns(
+        None,
+        Some("gisolated"),
+        id,
+        serde_json::json!({"name": "x"}),
+    )
+    .unwrap();
 
     let query = format!(
         r#"QUERY gisolated COMPUTE iso = GRAPH_IS_ISOLATED("{}") SELECT iso;"#,
@@ -487,9 +587,12 @@ fn test_graph_second_neighbors_path() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("sn"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("sn"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("sn"), c, serde_json::json!({"name": "C"})).unwrap();
+    db.put_doc_ns(None, Some("sn"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("sn"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("sn"), c, serde_json::json!({"name": "C"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
     db.add_edge(b, c, 1.0).unwrap();
 
@@ -514,7 +617,8 @@ fn test_graph_second_neighbors_isolated() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     let id = Uuid::new_v4();
-    db.put_doc_ns(None, Some("sni"), id, serde_json::json!({"name": "X"})).unwrap();
+    db.put_doc_ns(None, Some("sni"), id, serde_json::json!({"name": "X"}))
+        .unwrap();
 
     let query = format!(
         r#"QUERY sni COMPUTE sn2 = GRAPH_SECOND_NEIGHBORS("{}") SELECT sn2;"#,
@@ -539,9 +643,12 @@ fn test_two_hop_neighbors_alias() {
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
     let c = Uuid::new_v4();
-    db.put_doc_ns(None, Some("thn"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("thn"), b, serde_json::json!({"name": "B"})).unwrap();
-    db.put_doc_ns(None, Some("thn"), c, serde_json::json!({"name": "C"})).unwrap();
+    db.put_doc_ns(None, Some("thn"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("thn"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("thn"), c, serde_json::json!({"name": "C"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
     db.add_edge(b, c, 1.0).unwrap();
 
@@ -568,7 +675,8 @@ fn test_graph_core_number_isolated() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     let id = Uuid::new_v4();
-    db.put_doc_ns(None, Some("core"), id, serde_json::json!({"name": "X"})).unwrap();
+    db.put_doc_ns(None, Some("core"), id, serde_json::json!({"name": "X"}))
+        .unwrap();
 
     let query = format!(
         r#"QUERY core COMPUTE k = GRAPH_CORE_NUMBER("{}") SELECT k;"#,
@@ -595,7 +703,11 @@ fn test_graph_core_number_triangle() {
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty());
     match r.rows[0].data.get("k") {
-        Some(Value::Integer(n)) => assert!(*n >= 1, "triangle node core number should be >= 1, got {}", n),
+        Some(Value::Integer(n)) => assert!(
+            *n >= 1,
+            "triangle node core number should be >= 1, got {}",
+            n
+        ),
         other => panic!("expected Integer, got {:?}", other),
     }
 }
@@ -609,8 +721,10 @@ fn test_degree_centrality_alias() {
     let ex = Executor::new(db.clone());
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
-    db.put_doc_ns(None, Some("dc"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("dc"), b, serde_json::json!({"name": "B"})).unwrap();
+    db.put_doc_ns(None, Some("dc"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("dc"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
 
     let query = format!(
@@ -635,8 +749,10 @@ fn test_ego_network_size_alias() {
     let ex = Executor::new(db.clone());
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
-    db.put_doc_ns(None, Some("ens"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("ens"), b, serde_json::json!({"name": "B"})).unwrap();
+    db.put_doc_ns(None, Some("ens"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("ens"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
 
     let query = format!(
@@ -657,10 +773,18 @@ fn test_graph_num_nodes_alias() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
     for i in 0..3 {
-        db.put_doc_ns(None, Some("nn"), Uuid::new_v4(), serde_json::json!({"i": i})).unwrap();
+        db.put_doc_ns(
+            None,
+            Some("nn"),
+            Uuid::new_v4(),
+            serde_json::json!({"i": i}),
+        )
+        .unwrap();
     }
 
-    let mut p = Parser::new(r#"QUERY nn COMPUTE g=1 GROUP BY g COMPUTE cnt = GRAPH_NUM_NODES("nn") SELECT cnt;"#);
+    let mut p = Parser::new(
+        r#"QUERY nn COMPUTE g=1 GROUP BY g COMPUTE cnt = GRAPH_NUM_NODES("nn") SELECT cnt;"#,
+    );
     let r = ex.execute(p.parse().unwrap()).unwrap();
     assert!(!r.rows.is_empty());
     assert_eq!(r.rows[0].data.get("cnt"), Some(&Value::Integer(3)));
@@ -693,8 +817,10 @@ fn test_neighbors_depth_alias() {
     let ex = Executor::new(db.clone());
     let a = Uuid::new_v4();
     let b = Uuid::new_v4();
-    db.put_doc_ns(None, Some("ndal"), a, serde_json::json!({"name": "A"})).unwrap();
-    db.put_doc_ns(None, Some("ndal"), b, serde_json::json!({"name": "B"})).unwrap();
+    db.put_doc_ns(None, Some("ndal"), a, serde_json::json!({"name": "A"}))
+        .unwrap();
+    db.put_doc_ns(None, Some("ndal"), b, serde_json::json!({"name": "B"}))
+        .unwrap();
     db.add_edge(a, b, 1.0).unwrap();
 
     let query = format!(

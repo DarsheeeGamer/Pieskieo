@@ -49,10 +49,7 @@ pub enum Statement {
     },
 
     /// DROP INDEX ...
-    DropIndex {
-        name: String,
-        on: Option<String>,
-    },
+    DropIndex { name: String, on: Option<String> },
 
     /// DROP TABLE / DROP COLLECTION
     DropCollection {
@@ -83,10 +80,7 @@ pub enum Statement {
     },
 
     /// DROP VIEW
-    DropView {
-        name: String,
-        if_exists: bool,
-    },
+    DropView { name: String, if_exists: bool },
 
     /// BEGIN TRANSACTION
     Begin,
@@ -179,7 +173,10 @@ pub struct Cte {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SourceExpr {
     Collection(String),
-    CollectionAs { name: String, alias: String },
+    CollectionAs {
+        name: String,
+        alias: String,
+    },
     Cte(String),
     Subquery {
         statement: Box<Statement>,
@@ -553,7 +550,7 @@ pub struct EdgePattern {
     pub alias: Option<String>,
     pub edge_type: Option<String>,
     pub properties: Option<Condition>,
-    pub source: String, // Node alias
+    pub source: String, // Node aliasn
     pub target: String, // Node alias
     pub direction: TraverseDirection,
 }
@@ -745,13 +742,19 @@ pub struct OnConflict {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConflictAction {
     DoNothing,
-    DoUpdate { assignments: Vec<(String, Expression)> },
+    DoUpdate {
+        assignments: Vec<(String, Expression)>,
+    },
 }
 
 /// MERGE action
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MergeAction {
-    Update { assignments: Vec<(String, Expression)> },
-    Insert { fields: Vec<(String, Expression)> },
+    Update {
+        assignments: Vec<(String, Expression)>,
+    },
+    Insert {
+        fields: Vec<(String, Expression)>,
+    },
     Delete,
 }

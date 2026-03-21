@@ -6,7 +6,10 @@ use crate::pql::ast::{
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::{expressions, operations, source, transaction::TxOp, ExecutionStats, Executor, QueryResult, Row, Value};
+use super::{
+    expressions, operations, source, transaction::TxOp, ExecutionStats, Executor, QueryResult, Row,
+    Value,
+};
 
 pub(super) fn execute_insert(
     executor: &Executor,
@@ -118,7 +121,11 @@ fn try_upsert(
 ) -> Result<Option<Row>> {
     // Find conflicting row by conflict fields (or by id if no fields specified)
     let empty_fields: Vec<String> = vec![];
-    let conflict_fields = conflict.target.as_ref().map(|v| v.as_slice()).unwrap_or(&empty_fields);
+    let conflict_fields = conflict
+        .target
+        .as_ref()
+        .map(|v| v.as_slice())
+        .unwrap_or(&empty_fields);
     let conflict_row = find_conflict(executor, target, data, conflict_fields)?;
 
     match &conflict.action {
@@ -268,9 +275,11 @@ pub(super) fn execute_update(
             row.data.insert(field.clone(), value);
         }
         // Strip cross-join helper columns (src-prefixed) before saving
-        row.data.retain(|k, _| !k.contains('_') || {
-            // Keep fields that belong to the target (best effort: keep all user fields)
-            true
+        row.data.retain(|k, _| {
+            !k.contains('_') || {
+                // Keep fields that belong to the target (best effort: keep all user fields)
+                true
+            }
         });
         let json = source::row_data_to_json(row.data.clone())?;
 
@@ -640,7 +649,9 @@ pub(super) fn execute_copy_from(
             }
         }
         CopyFormat::Parquet => {
-            return Err(PieskieoError::Validation("Parquet format not yet supported".to_string()));
+            return Err(PieskieoError::Validation(
+                "Parquet format not yet supported".to_string(),
+            ));
         }
     };
 
@@ -662,7 +673,10 @@ pub(super) fn execute_copy_from(
             id: Uuid::new_v4(),
             data: {
                 let mut m = HashMap::new();
-                m.insert("rows_imported".to_string(), super::Value::Integer(count as i64));
+                m.insert(
+                    "rows_imported".to_string(),
+                    super::Value::Integer(count as i64),
+                );
                 m
             },
         }],
@@ -698,7 +712,9 @@ pub(super) fn execute_copy_to(
             serde_json::to_string_pretty(&json_rows).map_err(PieskieoError::Json)?
         }
         CopyFormat::Parquet => {
-            return Err(PieskieoError::Validation("Parquet format not yet supported".to_string()));
+            return Err(PieskieoError::Validation(
+                "Parquet format not yet supported".to_string(),
+            ));
         }
     };
 
@@ -709,7 +725,10 @@ pub(super) fn execute_copy_to(
             id: Uuid::new_v4(),
             data: {
                 let mut m = HashMap::new();
-                m.insert("rows_exported".to_string(), super::Value::Integer(count as i64));
+                m.insert(
+                    "rows_exported".to_string(),
+                    super::Value::Integer(count as i64),
+                );
                 m
             },
         }],
@@ -721,10 +740,7 @@ pub(super) fn execute_copy_to(
 /// Parse CSV content into a list of field maps.
 /// If `header` is true, the first line is treated as column names.
 /// If `header` is false, columns are named "col0", "col1", etc.
-fn parse_csv(
-    content: &str,
-    header: bool,
-) -> Result<Vec<HashMap<String, serde_json::Value>>> {
+fn parse_csv(content: &str, header: bool) -> Result<Vec<HashMap<String, serde_json::Value>>> {
     let mut lines = content.lines();
     let mut result = Vec::new();
 
@@ -746,7 +762,10 @@ fn parse_csv(
         let mut row: HashMap<String, serde_json::Value> = HashMap::new();
         for (i, value) in fields.into_iter().enumerate() {
             let key = if header {
-                headers.get(i).cloned().unwrap_or_else(|| format!("col{}", i))
+                headers
+                    .get(i)
+                    .cloned()
+                    .unwrap_or_else(|| format!("col{}", i))
             } else {
                 format!("col{}", i)
             };

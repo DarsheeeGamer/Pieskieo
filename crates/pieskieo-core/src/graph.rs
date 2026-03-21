@@ -36,7 +36,13 @@ impl GraphStore {
         edge_type: Option<String>,
         properties: Option<serde_json::Value>,
     ) {
-        let edge = Edge { src, dst, weight, edge_type: edge_type.clone(), properties: properties.clone() };
+        let edge = Edge {
+            src,
+            dst,
+            weight,
+            edge_type: edge_type.clone(),
+            properties: properties.clone(),
+        };
         {
             let mut adj = self.adj.write();
             let entry = adj.entry(src).or_insert_with(Vec::new);
@@ -85,7 +91,8 @@ impl GraphStore {
     /// Incoming neighbors.
     pub fn neighbors_in(&self, id: Uuid, limit: usize) -> Vec<Edge> {
         let adj_in = self.adj_in.read();
-        adj_in.get(&id)
+        adj_in
+            .get(&id)
             .map(|edges| edges.iter().take(limit).cloned().collect())
             .unwrap_or_default()
     }
@@ -141,7 +148,12 @@ impl GraphStore {
 
     /// Simple PageRank (power iteration).
     /// edge_type: if Some, only consider edges with matching edge_type.
-    pub fn pagerank(&self, _edge_type: Option<&str>, iterations: usize, damping: f64) -> HashMap<Uuid, f64> {
+    pub fn pagerank(
+        &self,
+        _edge_type: Option<&str>,
+        iterations: usize,
+        damping: f64,
+    ) -> HashMap<Uuid, f64> {
         let adj = self.adj.read();
         let nodes: Vec<Uuid> = adj.keys().cloned().collect();
         if nodes.is_empty() {
@@ -150,14 +162,19 @@ impl GraphStore {
         let n = nodes.len();
         let mut rank: HashMap<Uuid, f64> = nodes.iter().map(|&id| (id, 1.0 / n as f64)).collect();
         for _ in 0..iterations {
-            let mut new_rank: HashMap<Uuid, f64> = nodes.iter().map(|&id| (id, (1.0 - damping) / n as f64)).collect();
+            let mut new_rank: HashMap<Uuid, f64> = nodes
+                .iter()
+                .map(|&id| (id, (1.0 - damping) / n as f64))
+                .collect();
             for (&src, edges) in adj.iter() {
-                let filtered: Vec<_> = edges.iter().filter(|e| {
-                    _edge_type.map_or(true, |et| e.edge_type.as_deref() == Some(et))
-                }).collect();
+                let filtered: Vec<_> = edges
+                    .iter()
+                    .filter(|e| _edge_type.map_or(true, |et| e.edge_type.as_deref() == Some(et)))
+                    .collect();
                 let out_degree = filtered.len() as f64;
                 if out_degree > 0.0 {
-                    let contribution = damping * rank.get(&src).cloned().unwrap_or(0.0) / out_degree;
+                    let contribution =
+                        damping * rank.get(&src).cloned().unwrap_or(0.0) / out_degree;
                     for e in filtered {
                         *new_rank.entry(e.dst).or_insert(0.0) += contribution;
                     }
@@ -173,7 +190,9 @@ impl GraphStore {
         // Collect all edges first to avoid holding multiple read locks
         let all_edges: Vec<Edge> = {
             let adj = self.adj.read();
-            adj.values().flat_map(|edges| edges.iter().cloned()).collect()
+            adj.values()
+                .flat_map(|edges| edges.iter().cloned())
+                .collect()
         };
         // Build undirected adjacency from edges
         let mut undirected: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
@@ -209,7 +228,11 @@ impl GraphStore {
     }
 
     /// Betweenness centrality.
-    pub fn betweenness_centrality(&self, _edge_type: Option<&str>, _normalized: bool) -> HashMap<Uuid, f64> {
+    pub fn betweenness_centrality(
+        &self,
+        _edge_type: Option<&str>,
+        _normalized: bool,
+    ) -> HashMap<Uuid, f64> {
         let adj = self.adj.read();
         let nodes: Vec<Uuid> = adj.keys().cloned().collect();
         let mut centrality: HashMap<Uuid, f64> = nodes.iter().map(|&id| (id, 0.0)).collect();
@@ -245,7 +268,8 @@ impl GraphStore {
             let mut delta: HashMap<Uuid, f64> = nodes.iter().map(|&id| (id, 0.0)).collect();
             while let Some(w) = stack.pop() {
                 for &v in pred.get(&w).unwrap_or(&empty) {
-                    let coeff = (sigma.get(&v).cloned().unwrap_or(0.0) / sigma.get(&w).cloned().unwrap_or(1.0))
+                    let coeff = (sigma.get(&v).cloned().unwrap_or(0.0)
+                        / sigma.get(&w).cloned().unwrap_or(1.0))
                         * (1.0 + delta.get(&w).cloned().unwrap_or(0.0));
                     *delta.entry(v).or_insert(0.0) += coeff;
                 }
@@ -267,7 +291,11 @@ impl GraphStore {
     }
 
     /// Closeness centrality.
-    pub fn closeness_centrality(&self, _edge_type: Option<&str>, _normalized: bool) -> HashMap<Uuid, f64> {
+    pub fn closeness_centrality(
+        &self,
+        _edge_type: Option<&str>,
+        _normalized: bool,
+    ) -> HashMap<Uuid, f64> {
         let adj = self.adj.read();
         let nodes: Vec<Uuid> = adj.keys().cloned().collect();
         let n = nodes.len();
@@ -294,7 +322,11 @@ impl GraphStore {
             let reachable = dist.len();
             let cc = if total_dist > 0 && reachable > 1 {
                 (reachable - 1) as f64 / total_dist as f64
-                    * if _normalized { (reachable - 1) as f64 / (n - 1).max(1) as f64 } else { 1.0 }
+                    * if _normalized {
+                        (reachable - 1) as f64 / (n - 1).max(1) as f64
+                    } else {
+                        1.0
+                    }
             } else {
                 0.0
             };
@@ -310,7 +342,8 @@ impl GraphStore {
         if nodes.is_empty() {
             return HashMap::new();
         }
-        let mut community: HashMap<Uuid, usize> = nodes.iter().enumerate().map(|(i, &id)| (id, i)).collect();
+        let mut community: HashMap<Uuid, usize> =
+            nodes.iter().enumerate().map(|(i, &id)| (id, i)).collect();
         for &node in &nodes {
             let mut community_counts: HashMap<usize, usize> = HashMap::new();
             if let Some(edges) = adj.get(&node) {
@@ -333,7 +366,9 @@ impl GraphStore {
     /// All edges in the graph.
     pub fn all_edges(&self) -> Vec<Edge> {
         let adj = self.adj.read();
-        adj.values().flat_map(|edges| edges.iter().cloned()).collect()
+        adj.values()
+            .flat_map(|edges| edges.iter().cloned())
+            .collect()
     }
 
     /// All node IDs in the graph.

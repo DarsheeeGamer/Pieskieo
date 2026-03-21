@@ -1,5 +1,8 @@
 /// Integration tests for PQL probability distribution and statistics functions.
-use pieskieo_core::{PieskieoDb, pql::{Executor, Parser, Value}};
+use pieskieo_core::{
+    pql::{Executor, Parser, Value},
+    PieskieoDb,
+};
 use std::sync::Arc;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -8,7 +11,13 @@ fn make_db_f64(ns: &str, field: &str, val: f64) -> (tempfile::TempDir, Arc<Piesk
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some(ns), Uuid::new_v4(), serde_json::json!({ field: val })).unwrap();
+    db.put_doc_ns(
+        None,
+        Some(ns),
+        Uuid::new_v4(),
+        serde_json::json!({ field: val }),
+    )
+    .unwrap();
     (dir, db, ex)
 }
 
@@ -16,11 +25,20 @@ fn make_db_str(ns: &str, field: &str, val: &str) -> (tempfile::TempDir, Arc<Pies
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
-    db.put_doc_ns(None, Some(ns), Uuid::new_v4(), serde_json::json!({ field: val })).unwrap();
+    db.put_doc_ns(
+        None,
+        Some(ns),
+        Uuid::new_v4(),
+        serde_json::json!({ field: val }),
+    )
+    .unwrap();
     (dir, db, ex)
 }
 
-fn make_db_multi(ns: &str, fields: &[(&str, f64)]) -> (tempfile::TempDir, Arc<PieskieoDb>, Executor) {
+fn make_db_multi(
+    ns: &str,
+    fields: &[(&str, f64)],
+) -> (tempfile::TempDir, Arc<PieskieoDb>, Executor) {
     let dir = tempdir().unwrap();
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
@@ -28,7 +46,13 @@ fn make_db_multi(ns: &str, fields: &[(&str, f64)]) -> (tempfile::TempDir, Arc<Pi
     for (k, v) in fields {
         obj.insert(k.to_string(), serde_json::Value::from(*v));
     }
-    db.put_doc_ns(None, Some(ns), Uuid::new_v4(), serde_json::Value::Object(obj)).unwrap();
+    db.put_doc_ns(
+        None,
+        Some(ns),
+        Uuid::new_v4(),
+        serde_json::Value::Object(obj),
+    )
+    .unwrap();
     (dir, db, ex)
 }
 
@@ -40,7 +64,11 @@ fn test_normal_pdf_at_mean() {
     let mut p = Parser::new("QUERY nd01 COMPUTE rv = NORMAL_PDF(xv, 0.0, 1.0) SELECT rv;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rv") {
-        Some(Value::Float(f)) => assert!((*f - 0.3989422804).abs() < 0.001, "expected ~0.3989 got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - 0.3989422804).abs() < 0.001,
+            "expected ~0.3989 got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -379,7 +407,11 @@ fn test_cauchy_pdf() {
     let mut p = Parser::new("QUERY nd27 COMPUTE rv = CAUCHY_PDF(xv, 0.0, 1.0) SELECT rv;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rv") {
-        Some(Value::Float(f)) => assert!((*f - std::f64::consts::FRAC_1_PI).abs() < 0.001, "expected ~0.3183 got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - std::f64::consts::FRAC_1_PI).abs() < 0.001,
+            "expected ~0.3183 got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -392,7 +424,11 @@ fn test_cauchy_density_alias() {
     let mut p = Parser::new("QUERY nd28 COMPUTE rv = CAUCHY_DENSITY(xv, 0.0, 1.0) SELECT rv;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rv") {
-        Some(Value::Float(f)) => assert!((*f - std::f64::consts::FRAC_1_PI).abs() < 0.001, "expected ~0.3183 got {}", f),
+        Some(Value::Float(f)) => assert!(
+            (*f - std::f64::consts::FRAC_1_PI).abs() < 0.001,
+            "expected ~0.3183 got {}",
+            f
+        ),
         other => panic!("expected Float, got {:?}", other),
     }
 }
@@ -532,7 +568,8 @@ fn test_dist_mean_alias() {
 fn test_distribution_variance_normal() {
     // Var(Normal(0, sigma=2)) = sigma^2 = 4.0
     let (_dir, _db, ex) = make_db_str("nd39", "dist", "normal");
-    let mut p = Parser::new("QUERY nd39 COMPUTE rv = DISTRIBUTION_VARIANCE(dist, 0.0, 2.0) SELECT rv;");
+    let mut p =
+        Parser::new("QUERY nd39 COMPUTE rv = DISTRIBUTION_VARIANCE(dist, 0.0, 2.0) SELECT rv;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rv") {
         Some(Value::Float(f)) => assert!((*f - 4.0).abs() < 0.0001, "expected 4.0 got {}", f),
@@ -545,7 +582,8 @@ fn test_distribution_variance_normal() {
 fn test_distribution_variance_binomial() {
     // Var(Binomial(n=10, p=0.3)) = n*p*(1-p) = 10*0.3*0.7 = 2.1
     let (_dir, _db, ex) = make_db_str("nd40", "dist", "binomial");
-    let mut p = Parser::new("QUERY nd40 COMPUTE rv = DISTRIBUTION_VARIANCE(dist, 10.0, 0.3) SELECT rv;");
+    let mut p =
+        Parser::new("QUERY nd40 COMPUTE rv = DISTRIBUTION_VARIANCE(dist, 10.0, 0.3) SELECT rv;");
     let r = ex.execute(p.parse().unwrap()).unwrap();
     match r.rows[0].data.get("rv") {
         Some(Value::Float(f)) => assert!((*f - 2.1).abs() < 0.0001, "expected 2.1 got {}", f),

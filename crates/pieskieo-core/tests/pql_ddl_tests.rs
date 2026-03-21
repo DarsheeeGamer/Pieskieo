@@ -14,7 +14,9 @@ use uuid::Uuid;
 
 fn exec(ex: &Executor, sql: &str) -> pieskieo_core::pql::QueryResult {
     let mut p = Parser::new(sql);
-    let stmt = p.parse().unwrap_or_else(|e| panic!("Parse error in {:?}: {}", sql, e));
+    let stmt = p
+        .parse()
+        .unwrap_or_else(|e| panic!("Parse error in {:?}: {}", sql, e));
     ex.execute(stmt)
         .unwrap_or_else(|e| panic!("Execution error in {:?}: {}", sql, e))
 }
@@ -28,7 +30,10 @@ fn test_create_table_schema_fields() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE TABLE employees (id INTEGER, name STRING, salary FLOAT);");
+    exec(
+        &ex,
+        "CREATE TABLE employees (id INTEGER, name STRING, salary FLOAT);",
+    );
 
     let schema = exec(&ex, "SHOW SCHEMA OF employees;");
     let fields: Vec<String> = schema
@@ -39,9 +44,18 @@ fn test_create_table_schema_fields() {
             _ => None,
         })
         .collect();
-    assert!(fields.contains(&"id".to_string()), "id field must be in schema");
-    assert!(fields.contains(&"name".to_string()), "name field must be in schema");
-    assert!(fields.contains(&"salary".to_string()), "salary field must be in schema");
+    assert!(
+        fields.contains(&"id".to_string()),
+        "id field must be in schema"
+    );
+    assert!(
+        fields.contains(&"name".to_string()),
+        "name field must be in schema"
+    );
+    assert!(
+        fields.contains(&"salary".to_string()),
+        "salary field must be in schema"
+    );
 }
 
 /// SHOW TABLES returns a table name once rows exist.
@@ -64,7 +78,10 @@ fn test_create_table_appears_in_show_tables_after_insert() {
             _ => None,
         })
         .collect();
-    assert!(names.contains(&"staff".to_string()), "staff should appear in SHOW TABLES");
+    assert!(
+        names.contains(&"staff".to_string()),
+        "staff should appear in SHOW TABLES"
+    );
 }
 
 /// CREATE TABLE with NOT NULL column: schema stores the field type.
@@ -88,9 +105,18 @@ fn test_create_table_with_not_null_column() {
             _ => None,
         })
         .collect();
-    assert!(fields.contains(&"sku".to_string()), "sku field must be in schema");
-    assert!(fields.contains(&"price".to_string()), "price field must be in schema");
-    assert!(fields.contains(&"stock".to_string()), "stock field must be in schema");
+    assert!(
+        fields.contains(&"sku".to_string()),
+        "sku field must be in schema"
+    );
+    assert!(
+        fields.contains(&"price".to_string()),
+        "price field must be in schema"
+    );
+    assert!(
+        fields.contains(&"stock".to_string()),
+        "stock field must be in schema"
+    );
 }
 
 /// INSERT into a CREATE TABLE'd table and QUERY it back.
@@ -100,19 +126,37 @@ fn test_create_table_insert_and_query() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE TABLE orders (order_id INTEGER, customer STRING, total FLOAT);");
+    exec(
+        &ex,
+        "CREATE TABLE orders (order_id INTEGER, customer STRING, total FLOAT);",
+    );
 
-    exec(&ex, r#"INSERT INTO orders {order_id: 1, customer: "Alice", total: 99.5};"#);
-    exec(&ex, r#"INSERT INTO orders {order_id: 2, customer: "Bob", total: 42.0};"#);
+    exec(
+        &ex,
+        r#"INSERT INTO orders {order_id: 1, customer: "Alice", total: 99.5};"#,
+    );
+    exec(
+        &ex,
+        r#"INSERT INTO orders {order_id: 2, customer: "Bob", total: 42.0};"#,
+    );
 
-    let result = exec(&ex, "QUERY orders ORDER BY order_id ASC SELECT order_id, customer, total;");
+    let result = exec(
+        &ex,
+        "QUERY orders ORDER BY order_id ASC SELECT order_id, customer, total;",
+    );
     assert_eq!(result.rows.len(), 2, "should return both inserted rows");
 
     let first = &result.rows[0];
-    assert_eq!(first.data.get("customer"), Some(&Value::String("Alice".to_string())));
+    assert_eq!(
+        first.data.get("customer"),
+        Some(&Value::String("Alice".to_string()))
+    );
 
     let second = &result.rows[1];
-    assert_eq!(second.data.get("customer"), Some(&Value::String("Bob".to_string())));
+    assert_eq!(
+        second.data.get("customer"),
+        Some(&Value::String("Bob".to_string()))
+    );
 }
 
 /// CREATE TABLE with PRIMARYKEY column-level keyword.
@@ -142,7 +186,10 @@ fn test_create_table_with_column_primary_key() {
     assert!(fields.contains(&"email".to_string()));
 
     // Insert and query to confirm the table works
-    exec(&ex, r#"INSERT INTO users {user_id: 10, email: "test@example.com"};"#);
+    exec(
+        &ex,
+        r#"INSERT INTO users {user_id: 10, email: "test@example.com"};"#,
+    );
     let q = exec(&ex, "QUERY users SELECT user_id, email;");
     assert_eq!(q.rows.len(), 1);
 }
@@ -154,7 +201,10 @@ fn test_create_table_with_unique_column() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE TABLE accounts (account_id INTEGER, username STRING UNIQUE);");
+    exec(
+        &ex,
+        "CREATE TABLE accounts (account_id INTEGER, username STRING UNIQUE);",
+    );
 
     let schema = exec(&ex, "SHOW SCHEMA OF accounts;");
     let fields: Vec<String> = schema
@@ -179,7 +229,10 @@ fn test_create_collection_schema_fields() {
     let ex = Executor::new(db.clone());
 
     // Collection schema uses braces; NOT NULL is not supported in collection syntax
-    exec(&ex, "CREATE COLLECTION articles { title STRING, body STRING, views INTEGER }");
+    exec(
+        &ex,
+        "CREATE COLLECTION articles { title STRING, body STRING, views INTEGER }",
+    );
 
     let schema = exec(&ex, "SHOW SCHEMA OF articles;");
     let fields: Vec<String> = schema
@@ -202,8 +255,14 @@ fn test_create_collection_appears_in_show_collections_after_insert() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE COLLECTION articles { title STRING, body STRING, views INTEGER }");
-    exec(&ex, r#"INSERT INTO articles {title: "Hello", body: "World", views: 0};"#);
+    exec(
+        &ex,
+        "CREATE COLLECTION articles { title STRING, body STRING, views INTEGER }",
+    );
+    exec(
+        &ex,
+        r#"INSERT INTO articles {title: "Hello", body: "World", views: 0};"#,
+    );
 
     let result = exec(&ex, "SHOW COLLECTIONS;");
     let names: Vec<String> = result
@@ -214,7 +273,10 @@ fn test_create_collection_appears_in_show_collections_after_insert() {
             _ => None,
         })
         .collect();
-    assert!(names.contains(&"articles".to_string()), "articles must appear in SHOW COLLECTIONS");
+    assert!(
+        names.contains(&"articles".to_string()),
+        "articles must appear in SHOW COLLECTIONS"
+    );
 }
 
 /// CREATE COLLECTION, insert, and query back.
@@ -224,7 +286,10 @@ fn test_create_collection_insert_and_query() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE COLLECTION events { name STRING, score INTEGER }");
+    exec(
+        &ex,
+        "CREATE COLLECTION events { name STRING, score INTEGER }",
+    );
 
     exec(&ex, r#"INSERT INTO events {name: "sprint", score: 100};"#);
     exec(&ex, r#"INSERT INTO events {name: "relay", score: 80};"#);
@@ -246,7 +311,10 @@ fn test_create_index_appears_in_show_indexes() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE TABLE catalog (item_id INTEGER, name STRING, category STRING);");
+    exec(
+        &ex,
+        "CREATE TABLE catalog (item_id INTEGER, name STRING, category STRING);",
+    );
     exec(&ex, "CREATE INDEX idx_category ON catalog (category);");
 
     let result = exec(&ex, "SHOW INDEXES ON catalog;");
@@ -258,7 +326,10 @@ fn test_create_index_appears_in_show_indexes() {
             _ => None,
         })
         .collect();
-    assert!(names.contains(&"idx_category".to_string()), "idx_category should appear in SHOW INDEXES");
+    assert!(
+        names.contains(&"idx_category".to_string()),
+        "idx_category should appear in SHOW INDEXES"
+    );
 }
 
 /// CREATE HASH INDEX on a collection.
@@ -268,7 +339,10 @@ fn test_create_hash_index() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE COLLECTION sessions { user_id INTEGER, token STRING }");
+    exec(
+        &ex,
+        "CREATE COLLECTION sessions { user_id INTEGER, token STRING }",
+    );
     exec(&ex, "CREATE HASH INDEX idx_token ON sessions (token);");
 
     let result = exec(&ex, "SHOW INDEXES ON sessions;");
@@ -280,7 +354,10 @@ fn test_create_hash_index() {
             _ => None,
         })
         .collect();
-    assert!(names.contains(&"idx_token".to_string()), "idx_token should appear after SHOW INDEXES");
+    assert!(
+        names.contains(&"idx_token".to_string()),
+        "idx_token should appear after SHOW INDEXES"
+    );
 }
 
 /// CREATE INDEX on multiple fields (composite index).
@@ -290,8 +367,14 @@ fn test_create_composite_index() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE TABLE invoices (inv_id INTEGER, client STRING, year INTEGER, amount FLOAT);");
-    exec(&ex, "CREATE INDEX idx_client_year ON invoices (client, year);");
+    exec(
+        &ex,
+        "CREATE TABLE invoices (inv_id INTEGER, client STRING, year INTEGER, amount FLOAT);",
+    );
+    exec(
+        &ex,
+        "CREATE INDEX idx_client_year ON invoices (client, year);",
+    );
 
     let result = exec(&ex, "SHOW INDEXES ON invoices;");
     let names: Vec<String> = result
@@ -312,7 +395,10 @@ fn test_multiple_indexes_on_same_table() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE TABLE products (id INTEGER, name STRING, category STRING, price FLOAT);");
+    exec(
+        &ex,
+        "CREATE TABLE products (id INTEGER, name STRING, category STRING, price FLOAT);",
+    );
     exec(&ex, "CREATE INDEX idx_name ON products (name);");
     exec(&ex, "CREATE INDEX idx_price ON products (price);");
 
@@ -398,7 +484,10 @@ fn test_create_view_if_not_exists_is_idempotent() {
     )
     .unwrap();
 
-    exec(&ex, "CREATE VIEW cheap_items AS QUERY items WHERE price < 20 SELECT kind, price;");
+    exec(
+        &ex,
+        "CREATE VIEW cheap_items AS QUERY items WHERE price < 20 SELECT kind, price;",
+    );
     // Second CREATE VIEW IF NOT EXISTS must not error
     exec(
         &ex,
@@ -439,7 +528,10 @@ fn test_create_view_appears_in_show_views() {
             _ => None,
         })
         .collect();
-    assert!(names.contains(&"error_logs".to_string()), "error_logs should appear in SHOW VIEWS");
+    assert!(
+        names.contains(&"error_logs".to_string()),
+        "error_logs should appear in SHOW VIEWS"
+    );
 }
 
 /// View over a filtered table returns correct subset.
@@ -459,11 +551,18 @@ fn test_view_filters_correctly() {
         .unwrap();
     }
 
-    exec(&ex, "CREATE VIEW top_scores AS QUERY scores WHERE score >= 30 SELECT player, score;");
+    exec(
+        &ex,
+        "CREATE VIEW top_scores AS QUERY scores WHERE score >= 30 SELECT player, score;",
+    );
 
     let result = exec(&ex, "QUERY top_scores SELECT player, score;");
     // scores 30, 40 are >= 30 (i=3 gives 30, i=4 gives 40)
-    assert_eq!(result.rows.len(), 2, "view should return players with score >= 30");
+    assert_eq!(
+        result.rows.len(),
+        2,
+        "view should return players with score >= 30"
+    );
 }
 
 // ── DROP TABLE / DROP COLLECTION ─────────────────────────────────────────────
@@ -501,7 +600,10 @@ fn test_drop_table_removes_from_show_tables() {
             _ => None,
         })
         .collect();
-    assert!(!after_names.contains(&"temp_data".to_string()), "temp_data must be gone after DROP TABLE");
+    assert!(
+        !after_names.contains(&"temp_data".to_string()),
+        "temp_data must be gone after DROP TABLE"
+    );
 }
 
 /// DROP COLLECTION removes the collection from SHOW COLLECTIONS.
@@ -555,7 +657,11 @@ fn test_drop_table_purges_data() {
 
     // After DROP + re-CREATE the table should be empty
     let result = exec(&ex, "QUERY cache SELECT key, value;");
-    assert_eq!(result.rows.len(), 0, "table should be empty after DROP and re-CREATE");
+    assert_eq!(
+        result.rows.len(),
+        0,
+        "table should be empty after DROP and re-CREATE"
+    );
 }
 
 // ── DROP INDEX ────────────────────────────────────────────────────────────────
@@ -592,7 +698,10 @@ fn test_drop_index_removes_from_show_indexes() {
             _ => None,
         })
         .collect();
-    assert!(!after_names.contains(&"idx_cat".to_string()), "idx_cat must be gone after DROP INDEX");
+    assert!(
+        !after_names.contains(&"idx_cat".to_string()),
+        "idx_cat must be gone after DROP INDEX"
+    );
 }
 
 // ── DROP VIEW ─────────────────────────────────────────────────────────────────
@@ -627,7 +736,10 @@ fn test_drop_view_removes_from_show_views() {
             _ => None,
         })
         .collect();
-    assert!(!names.contains(&"high_cpu".to_string()), "high_cpu must be gone after DROP VIEW");
+    assert!(
+        !names.contains(&"high_cpu".to_string()),
+        "high_cpu must be gone after DROP VIEW"
+    );
 }
 
 /// DROP VIEW IF EXISTS does not error when the view does not exist.
@@ -679,7 +791,10 @@ fn test_alter_table_drop_column() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE TABLE widgets (id INTEGER, name STRING, internal_code STRING);");
+    exec(
+        &ex,
+        "CREATE TABLE widgets (id INTEGER, name STRING, internal_code STRING);",
+    );
 
     exec(&ex, "ALTER TABLE widgets DROP COLUMN internal_code;");
 
@@ -707,9 +822,15 @@ fn test_alter_table_rename_column() {
     let db = Arc::new(PieskieoDb::open(dir.path()).unwrap());
     let ex = Executor::new(db.clone());
 
-    exec(&ex, "CREATE TABLE contracts (contract_id INTEGER, client_name STRING);");
+    exec(
+        &ex,
+        "CREATE TABLE contracts (contract_id INTEGER, client_name STRING);",
+    );
 
-    exec(&ex, "ALTER TABLE contracts RENAME COLUMN client_name TO customer_name;");
+    exec(
+        &ex,
+        "ALTER TABLE contracts RENAME COLUMN client_name TO customer_name;",
+    );
 
     let schema = exec(&ex, "SHOW SCHEMA OF contracts;");
     let fields: Vec<String> = schema
@@ -739,11 +860,17 @@ fn test_alter_table_add_column_then_insert() {
 
     exec(&ex, "CREATE TABLE notes (id INTEGER, content STRING);");
     exec(&ex, "ALTER TABLE notes ADD COLUMN priority INTEGER;");
-    exec(&ex, r#"INSERT INTO notes {id: 1, content: "important", priority: 5};"#);
+    exec(
+        &ex,
+        r#"INSERT INTO notes {id: 1, content: "important", priority: 5};"#,
+    );
 
     let result = exec(&ex, "QUERY notes SELECT id, content, priority;");
     assert_eq!(result.rows.len(), 1);
-    assert_eq!(result.rows[0].data.get("priority"), Some(&Value::Integer(5)));
+    assert_eq!(
+        result.rows[0].data.get("priority"),
+        Some(&Value::Integer(5))
+    );
 }
 
 // ── Bonus: TRUNCATE ───────────────────────────────────────────────────────────
@@ -777,7 +904,10 @@ fn test_truncate_table_clears_rows() {
             _ => None,
         })
         .collect();
-    assert!(fields.contains(&"msg".to_string()), "schema should persist after TRUNCATE");
+    assert!(
+        fields.contains(&"msg".to_string()),
+        "schema should persist after TRUNCATE"
+    );
 }
 
 // ── Bonus: CREATE SEQUENCE ────────────────────────────────────────────────────
@@ -800,7 +930,10 @@ fn test_create_sequence_appears_in_show_sequences() {
             _ => None,
         })
         .collect();
-    assert!(names.contains(&"order_seq".to_string()), "order_seq must appear in SHOW SEQUENCES");
+    assert!(
+        names.contains(&"order_seq".to_string()),
+        "order_seq must appear in SHOW SEQUENCES"
+    );
 }
 
 /// DROP SEQUENCE removes it from SHOW SEQUENCES.
@@ -822,5 +955,8 @@ fn test_drop_sequence() {
             _ => None,
         })
         .collect();
-    assert!(!names.contains(&"tmp_seq".to_string()), "tmp_seq must be gone after DROP SEQUENCE");
+    assert!(
+        !names.contains(&"tmp_seq".to_string()),
+        "tmp_seq must be gone after DROP SEQUENCE"
+    );
 }
