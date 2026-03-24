@@ -131,16 +131,16 @@ impl GraphStore {
         let mut stack = Vec::new();
         let mut out = Vec::new();
         stack.push(start);
+        visited.insert(start);
         while let Some(node) = stack.pop() {
-            if !visited.insert(node) {
-                continue;
-            }
             for e in self.neighbors(node, limit).into_iter().rev() {
-                out.push(e.clone());
-                if out.len() >= limit {
-                    return out;
+                if visited.insert(e.dst) {
+                    out.push(e.clone());
+                    if out.len() >= limit {
+                        return out;
+                    }
+                    stack.push(e.dst);
                 }
-                stack.push(e.dst);
             }
         }
         out
@@ -375,5 +375,114 @@ impl GraphStore {
     pub fn all_nodes(&self) -> Vec<Uuid> {
         let adj = self.adj.read();
         adj.keys().cloned().collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dfs_empty() {
+        let graph = GraphStore::new();
+        let start = Uuid::new_v4();
+        let result = graph.dfs(start, 10);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_dfs_linear() {
+        let graph = GraphStore::new();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let c = Uuid::new_v4();
+
+        graph.add_edge(a, b, 1.0);
+        graph.add_edge(b, c, 1.0);
+
+        let result = graph.dfs(a, 10);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].src, a);
+        assert_eq!(result[0].dst, b);
+        assert_eq!(result[1].src, b);
+        assert_eq!(result[1].dst, c);
+    }
+
+    #[test]
+    fn test_dfs_branching() {
+        let graph = GraphStore::new();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let c = Uuid::new_v4();
+
+        graph.add_edge(a, b, 1.0);
+        graph.add_edge(a, c, 1.0);
+
+        let result = graph.dfs(a, 10);
+        assert_eq!(result.len(), 2);
+        // DFS visits children in order (reversed for stack but neighbors() order might vary)
+        // Given neighbors(a) returns [b, c], then rev() gives [c, b].
+        // Stack: [c, b]. Pop b. result: [b]. Stack: [c]. Pop c. result: [b, c].
+        // Wait, the current implementation:
+        // Pop a. neighbors(a) is [b, c]. rev is [c, b].
+        // out.push(c), out.push(b). result is [c, b].
+        // Then it pushes c then b to stack.
+        // Stack: [c, b]. Pop b. b has no neighbors.
+        // Pop c. c has no neighbors.
+        // So result should be [c, b] if neighbors returns [b, c].
+        let dsts: Vec<Uuid> = result.iter().map(|e| e.dst).collect();
+        assert!(dsts.contains(&b));
+        assert!(dsts.contains(&c));
+    }
+
+    #[test]
+    fn test_dfs_cycle() {
+        let graph = GraphStore::new();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+
+        graph.add_edge(a, b, 1.0);
+        graph.add_edge(b, a, 1.0);
+
+        let result = graph.dfs(a, 10);
+        // a -> b, b -> a.
+        // Start: visited={a}, stack=[a].
+        // Pop a. neighbors(a)=[b]. visited={a, b}, out=[a->b], stack=[b].
+        // Pop b. neighbors(b)=[a]. a is in visited.
+        // End.
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].src, a);
+        assert_eq!(result[0].dst, b);
+    }
+
+    #[test]
+    fn test_dfs_limit() {
+        let graph = GraphStore::new();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let c = Uuid::new_v4();
+
+        graph.add_edge(a, b, 1.0);
+        graph.add_edge(b, c, 1.0);
+
+        let result = graph.dfs(a, 1);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_dfs_disconnected() {
+        let graph = GraphStore::new();
+        let a = Uuid::new_v4();
+        let b = Uuid::new_v4();
+        let c = Uuid::new_v4();
+
+        graph.add_edge(a, b, 1.0);
+        // c is disconnected
+        graph.add_edge(c, b, 1.0);
+
+        let result = graph.dfs(a, 10);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].src, a);
+        assert_eq!(result[0].dst, b);
     }
 }
