@@ -88,7 +88,7 @@ Binaries: `target/release/pieskieo-server`, `pieskieo`, `load`, `bench`.
 - Metrics: `GET /metrics`
 
 ## Auth & security
-- Default admin (only if nothing configured): user `Pieskieo` / password `pieskieo`.
+- Default admin (only if nothing configured): a secure random password is generated for the `admin` user on first start and persisted to `auth_users.json`. Check server logs for the generated password.
 - Production: set users via `PIESKIEO_USERS='[{"user":"alice","pass":"S3cure!Pwd","role":"admin"}]'`
   or `PIESKIEO_AUTH_USER` / `PIESKIEO_AUTH_PASSWORD`.
 - Passwords are Argon2id hashed; creation enforces upper+lower+digit+symbol and length ≥ 8.
