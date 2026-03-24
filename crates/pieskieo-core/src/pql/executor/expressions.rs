@@ -38046,7 +38046,9 @@ pub(crate) fn execute_function(
                 .collect();
             let mut adj_conn = gflow_build_unweighted_adj(&graph_obj, &idx, n);
             for ui in 0..n {
-                for vi in adj_conn[ui].clone() {
+                let len = adj_conn[ui].len();
+                for i in 0..len {
+                    let vi = adj_conn[ui][i];
                     if !adj_conn[vi].contains(&ui) {
                         adj_conn[vi].push(ui);
                     }
@@ -38081,7 +38083,9 @@ pub(crate) fn execute_function(
                 .collect();
             let mut adj_cc = gflow_build_unweighted_adj(&graph_obj, &idx, n);
             for ui in 0..n {
-                for vi in adj_cc[ui].clone() {
+                let len = adj_cc[ui].len();
+                for i in 0..len {
+                    let vi = adj_cc[ui][i];
                     if !adj_cc[vi].contains(&ui) {
                         adj_cc[vi].push(ui);
                     }
@@ -38190,7 +38194,9 @@ pub(crate) fn execute_function(
                 .collect();
             let mut adj_bip = gflow_build_unweighted_adj(&graph_obj, &idx, n);
             for ui in 0..n {
-                for vi in adj_bip[ui].clone() {
+                let len = adj_bip[ui].len();
+                for i in 0..len {
+                    let vi = adj_bip[ui][i];
                     if !adj_bip[vi].contains(&ui) {
                         adj_bip[vi].push(ui);
                     }
@@ -38242,7 +38248,9 @@ pub(crate) fn execute_function(
                 .collect();
             let mut adj_ap = gflow_build_unweighted_adj(&graph_obj, &idx, n);
             for ui in 0..n {
-                for vi in adj_ap[ui].clone() {
+                let len = adj_ap[ui].len();
+                for i in 0..len {
+                    let vi = adj_ap[ui][i];
                     if !adj_ap[vi].contains(&ui) {
                         adj_ap[vi].push(ui);
                     }
@@ -38279,7 +38287,9 @@ pub(crate) fn execute_function(
                 .collect();
             let mut adj_br = gflow_build_unweighted_adj(&graph_obj, &idx, n);
             for ui in 0..n {
-                for vi in adj_br[ui].clone() {
+                let len = adj_br[ui].len();
+                for i in 0..len {
+                    let vi = adj_br[ui][i];
                     if !adj_br[vi].contains(&ui) {
                         adj_br[vi].push(ui);
                     }
@@ -38320,7 +38330,9 @@ pub(crate) fn execute_function(
                 .collect();
             let mut adj_eu = gflow_build_unweighted_adj(&graph_obj, &idx, n);
             for ui in 0..n {
-                for vi in adj_eu[ui].clone() {
+                let len = adj_eu[ui].len();
+                for i in 0..len {
+                    let vi = adj_eu[ui][i];
                     if !adj_eu[vi].contains(&ui) {
                         adj_eu[vi].push(ui);
                     }
@@ -38357,7 +38369,9 @@ pub(crate) fn execute_function(
                 .collect();
             let mut adj_se = gflow_build_unweighted_adj(&graph_obj, &idx, n);
             for ui in 0..n {
-                for vi in adj_se[ui].clone() {
+                let len = adj_se[ui].len();
+                for i in 0..len {
+                    let vi = adj_se[ui][i];
                     if !adj_se[vi].contains(&ui) {
                         adj_se[vi].push(ui);
                     }
@@ -38813,7 +38827,9 @@ pub(crate) fn execute_function(
                 .collect();
             let mut adj_stc = gflow_build_unweighted_adj(&graph_obj, &idx, n);
             for ui in 0..n {
-                for vi in adj_stc[ui].clone() {
+                let len = adj_stc[ui].len();
+                for i in 0..len {
+                    let vi = adj_stc[ui][i];
                     if !adj_stc[vi].contains(&ui) {
                         adj_stc[vi].push(ui);
                     }
