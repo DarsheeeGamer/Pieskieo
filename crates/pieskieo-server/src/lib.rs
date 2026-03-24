@@ -56,6 +56,7 @@ struct AppState {
     data_dir: String,
     pause_writes: Arc<AtomicBool>,
     reshard_status: Arc<RwLock<Option<ReshardReport>>>,
+    startup_time: Instant,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -1297,6 +1298,7 @@ impl DbPool {
 }
 
 pub async fn serve() -> anyhow::Result<()> {
+    let startup_time = Instant::now();
     let data_dir = std::env::var("PIESKIEO_DATA").unwrap_or_else(|_| default_data_dir());
     init_logging(&data_dir);
 
@@ -1317,6 +1319,7 @@ pub async fn serve() -> anyhow::Result<()> {
         data_dir,
         pause_writes: Arc::new(AtomicBool::new(false)),
         reshard_status: Arc::new(RwLock::new(None)),
+        startup_time,
     };
 
     // background WAL flusher (group commit) for better latency.
@@ -1631,7 +1634,7 @@ async fn health(State(state): State<AppState>) -> Result<Json<HealthStatus>, Api
     Ok(Json(HealthStatus {
         status: "healthy".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        uptime_seconds: 0, // TODO: track startup time
+        uptime_seconds: state.startup_time.elapsed().as_secs(),
         total_docs: m.docs,
         total_rows: m.rows,
         total_vectors: m.vectors,
@@ -2290,7 +2293,7 @@ async fn metrics(
     let guard = state.pool.read().await;
     let m = guard.aggregate_metrics();
     let mut body = format!(
-        "pieskieo_docs {}\npieskieo_rows {}\npieskieo_vectors {}\npieskieo_vector_tombstones {}\npieskieo_hnsw_ready {}\npieskieo_ef_search {}\npieskieo_ef_construction {}\npieskieo_link_top_k {}\npieskieo_shard_total {}\n",
+        "pieskieo_docs {}\npieskieo_rows {}\npieskieo_vectors {}\npieskieo_vector_tombstones {}\npieskieo_hnsw_ready {}\npieskieo_ef_search {}\npieskieo_ef_construction {}\npieskieo_link_top_k {}\npieskieo_shard_total {}\npieskieo_uptime_seconds {}\n",
         m.docs,
         m.rows,
         m.vectors,
@@ -2300,6 +2303,7 @@ async fn metrics(
         m.ef_construction,
         m.link_top_k,
         m.shard_total,
+        state.startup_time.elapsed().as_secs(),
     );
     let rejects = state.limiter.rejected.load(Ordering::Relaxed);
     body.push_str(&format!("pieskieo_rate_rejects {}\n", rejects));
