@@ -10,19 +10,19 @@
 
 | Category | Total Features | Planned | In Progress | Remaining |
 |----------|---------------|---------|-------------|-----------|
-| PostgreSQL | 32 | 1 | 1 | 30 |
-| MongoDB | 34 | 1 | 0 | 33 |
-| Weaviate | 22 | 0 | 0 | 22 |
+| PostgreSQL | 32 | 4 | 0 | 28 |
+| MongoDB | 34 | 4 | 0 | 30 |
+| Weaviate | 22 | 2 | 0 | 20 |
 | LanceDB | 22 | 0 | 0 | 22 |
-| Kùzu | 29 | 0 | 0 | 29 |
-| Cross-Cutting | 18 | 1 | 0 | 17 |
-| **TOTAL** | **157** | **3** | **1** | **153** |
+| Kùzu | 29 | 1 | 0 | 28 |
+| Cross-Cutting | 18 | 1 | 3 | 14 |
+| **TOTAL** | **157** | **12** | **3** | **142** |
 
 ---
 
 ## Completion Checklist
 
-### PostgreSQL Features (1/32 complete)
+### PostgreSQL Features (4/32 complete)
 - [x] 01-subqueries.md
 - [ ] 02-ctes.md
 - [ ] 03-window-functions.md
@@ -38,17 +38,17 @@
 - [ ] 13-sequences.md (SERIAL, IDENTITY)
 - [ ] 14-alter-table.md
 - [ ] 15-btree-indexes.md
-- [ ] 16-gin-indexes.md (JSON, arrays)
+- [x] 16-gin-indexes.md (JSON, arrays)
 - [ ] 17-gist-indexes.md (Geospatial)
 - [ ] 18-brin-indexes.md (Block range)
 - [ ] 19-partial-indexes.md
 - [ ] 20-expression-indexes.md
 - [ ] 21-statistics.md (ANALYZE)
-- [ ] 22-optimizer.md (Cost-based)
+- [x] 22-optimizer.md (Cost-based)
 - [ ] 23-join-planning.md
 - [ ] 24-index-scans.md (Index-only scans)
 - [ ] 25-parallel-query.md
-- [ ] 26-json.md (JSON/JSONB operators)
+- [x] 26-json.md (JSON/JSONB operators)
 - [ ] 27-fulltext.md (Full-text search)
 - [ ] 28-triggers.md
 - [ ] 29-procedures.md (Stored procedures)
@@ -56,9 +56,9 @@
 - [ ] 31-partitioning.md (Range, list, hash)
 - [ ] 32-copy-listen.md (COPY, LISTEN/NOTIFY)
 
-### MongoDB Features (1/34 complete)
+### MongoDB Features (4/34 complete)
 - [x] AGGREGATION_PIPELINE.md (overview)
-- [ ] 01-update-operators.md ($set, $unset, $inc, $mul, $rename, $setOnInsert)
+- [x] update-operators.md ($set, $unset, $inc, $mul, $rename, $setOnInsert)
 - [ ] 02-array-operators.md ($push, $pull, $pop, $addToSet, $pullAll)
 - [ ] 03-array-filters.md (Positional operators, arrayFilters)
 - [ ] 04-upsert.md
@@ -67,8 +67,8 @@
 - [ ] 07-project.md ($project stage details)
 - [ ] 08-group.md ($group stage details)
 - [ ] 09-unwind.md ($unwind stage details)
-- [ ] 10-lookup.md ($lookup/joins details)
-- [ ] 11-facet.md ($facet multi-pipeline)
+- [x] lookup.md ($lookup/joins details)
+- [x] facet.md ($facet multi-pipeline)
 - [ ] 12-bucket.md ($bucket histograms)
 - [ ] 13-sort-limit.md ($sort, $limit, $skip)
 - [ ] 14-field-manipulation.md ($addFields, $replaceRoot)
@@ -93,12 +93,12 @@
 - [ ] 33-timeseries.md
 - [ ] 34-distributed-txn.md (Transactions across shards)
 
-### Weaviate Features (0/22 complete)
+### Weaviate Features (2/22 complete)
 - [ ] 01-multi-vector.md (Multiple vector spaces per object)
 - [ ] 02-named-vectors.md
 - [ ] 03-compression.md (Vector compression)
-- [ ] 04-bm25.md (BM25 keyword search)
-- [ ] 05-hybrid-fusion.md (Hybrid score fusion)
+- [x] bm25.md (BM25 keyword search)
+- [x] hybrid-fusion.md (Hybrid score fusion)
 - [ ] 06-reranking.md (Reranking modules)
 - [ ] 07-cross-encoder.md
 - [ ] 08-dynamic-hnsw.md (Dynamic parameters)
@@ -141,8 +141,8 @@
 - [ ] 21-duckdb.md (DuckDB integration)
 - [ ] 22-polars.md (Polars integration)
 
-### Kùzu Features (0/29 complete)
-- [ ] 01-match.md (Cypher MATCH patterns)
+### Kùzu Features (1/29 complete)
+- [x] cypher-match.md (Cypher MATCH patterns)
 - [ ] 02-optional-match.md
 - [ ] 03-var-length-paths.md (Variable-length paths)
 - [ ] 04-path-expressions.md
