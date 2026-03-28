@@ -1028,7 +1028,7 @@ impl Parser {
         };
 
         // Expect VALUES keyword
-        if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "VALUES")
+        if !matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "VALUES")
         {
             return Err(ParseError::UnexpectedToken {
                 expected: "VALUES".to_string(),
@@ -1081,10 +1081,10 @@ impl Parser {
         }
 
         // Parse ON CONFLICT clause if present
-        let on_conflict = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "ON")
+        let on_conflict = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "ON")
         {
             self.advance();
-            if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "CONFLICT")
+            if !matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "CONFLICT")
             {
                 return Err(ParseError::Custom("Expected CONFLICT after ON".to_string()));
             }
@@ -1109,7 +1109,7 @@ impl Parser {
             };
 
             // Parse DO NOTHING or DO UPDATE
-            if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "DO")
+            if !matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "DO")
             {
                 return Err(ParseError::Custom(
                     "Expected DO after ON CONFLICT".to_string(),
@@ -1117,7 +1117,7 @@ impl Parser {
             }
             self.advance();
 
-            let action = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "NOTHING")
+            let action = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "NOTHING")
             {
                 self.advance();
                 ConflictAction::DoNothing
@@ -1152,7 +1152,7 @@ impl Parser {
         };
 
         // Parse RETURNING clause if present
-        let returning = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "RETURNING")
+        let returning = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "RETURNING")
         {
             self.advance();
             Some(self.parse_select_fields()?)
@@ -1174,7 +1174,7 @@ impl Parser {
         let target = self.parse_identifier()?;
 
         // Parse FROM clause if present (for joins in UPDATE)
-        let from_source = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "FROM")
+        let from_source = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "FROM")
         {
             self.advance();
             Some(self.parse_identifier()?)
@@ -1208,7 +1208,7 @@ impl Parser {
         };
 
         // Parse RETURNING clause if present
-        let returning = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "RETURNING")
+        let returning = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "RETURNING")
         {
             self.advance();
             Some(self.parse_select_fields()?)
@@ -1229,7 +1229,7 @@ impl Parser {
         self.expect(Token::Delete)?;
 
         // Expect FROM keyword
-        if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "FROM")
+        if !matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "FROM")
         {
             return Err(ParseError::UnexpectedToken {
                 expected: "FROM".to_string(),
@@ -1249,7 +1249,7 @@ impl Parser {
         };
 
         // Parse RETURNING clause if present
-        let returning = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "RETURNING")
+        let returning = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "RETURNING")
         {
             self.advance();
             Some(self.parse_select_fields()?)
@@ -1302,14 +1302,14 @@ impl Parser {
     }
 
     fn parse_create_table(&mut self) -> Result<Statement, ParseError> {
-        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "IF")
+        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "IF")
         {
             self.advance();
             if !matches!(self.current_token, Some(Token::Not)) {
                 return Err(ParseError::Custom("Expected NOT after IF".to_string()));
             }
             self.advance();
-            if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "EXISTS")
+            if !matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "EXISTS")
             {
                 return Err(ParseError::Custom(
                     "Expected EXISTS after IF NOT".to_string(),
@@ -1330,7 +1330,7 @@ impl Parser {
 
         loop {
             // Check if this is a constraint or a field
-            if matches!(self.current_token, Some(Token::Identifier(ref s)) 
+            if matches!(self.current_token, Some(Token::Identifier(ref s))
                 if s.to_uppercase() == "PRIMARY" || s.to_uppercase() == "UNIQUE" 
                 || s.to_uppercase() == "CHECK" || s.to_uppercase() == "FOREIGN")
             {
@@ -1397,7 +1397,7 @@ impl Parser {
     }
 
     fn parse_create_collection(&mut self) -> Result<Statement, ParseError> {
-        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "IF")
+        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "IF")
         {
             self.advance();
             self.advance(); // NOT
@@ -1416,7 +1416,7 @@ impl Parser {
     }
 
     fn parse_create_index(&mut self) -> Result<Statement, ParseError> {
-        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "IF")
+        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "IF")
         {
             self.advance();
             self.advance(); // NOT
@@ -1428,7 +1428,7 @@ impl Parser {
 
         let name = self.parse_identifier()?;
 
-        if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "ON")
+        if !matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "ON")
         {
             return Err(ParseError::Custom(
                 "Expected ON after index name".to_string(),
@@ -1439,7 +1439,7 @@ impl Parser {
         let table = self.parse_identifier()?;
 
         // Parse index type if present
-        let index_type = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "USING")
+        let index_type = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "USING")
         {
             self.advance();
             let type_name = self.parse_identifier()?;
@@ -1522,7 +1522,7 @@ impl Parser {
         let dst = self.parse_expression()?;
         self.expect(Token::RightParen)?;
 
-        let weight = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "WEIGHT")
+        let weight = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "WEIGHT")
         {
             self.advance();
             Some(self.parse_expression()?)
@@ -1539,7 +1539,7 @@ impl Parser {
     }
 
     fn parse_create_view(&mut self) -> Result<Statement, ParseError> {
-        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "IF")
+        let if_not_exists = if matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "IF")
         {
             self.advance();
             self.advance(); // NOT
@@ -1551,7 +1551,7 @@ impl Parser {
 
         let name = self.parse_identifier()?;
 
-        if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "AS")
+        if !matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "AS")
         {
             return Err(ParseError::Custom(
                 "Expected AS after view name".to_string(),
@@ -1572,7 +1572,7 @@ impl Parser {
         match &self.current_token {
             Some(Token::Identifier(s)) if s.to_uppercase() == "PRIMARY" => {
                 self.advance();
-                if !matches!(self.current_token, Some(Token::Identifier(ref s)) if s.to_uppercase() == "KEY")
+                if !matches!(self.current_token, Some(Token::Identifier(ref s))if s.to_uppercase() == "KEY")
                 {
                     return Err(ParseError::Custom("Expected KEY after PRIMARY".to_string()));
                 }
