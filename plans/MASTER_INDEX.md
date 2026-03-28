@@ -39,10 +39,10 @@
 - [ ] **Window Functions** → `plans/postgresql/03-window-functions.md`
 - [ ] **Advanced JOINs** → `plans/postgresql/04-joins.md`
 
-#### Transaction & Concurrency (Status: 🟡 30% complete)
+#### Transaction & Concurrency (Status: 🟡 40% complete)
 - [x] Basic MVCC with snapshots
 - [ ] **Full ACID** → `plans/postgresql/05-acid.md`
-- [ ] **Isolation Levels** → `plans/postgresql/06-isolation.md`
+- [x] **Isolation Levels** → `plans/postgresql/06-isolation.md`
 - [ ] **Savepoints** → `plans/postgresql/07-savepoints.md`
 - [ ] **Deadlock Detection** → `plans/postgresql/08-deadlocks.md`
 
@@ -55,9 +55,9 @@
 - [ ] **Sequences & SERIAL** → `plans/postgresql/13-sequences.md`
 - [ ] **ALTER TABLE** → `plans/postgresql/14-alter-table.md`
 
-#### Advanced Indexing (Status: 🟡 20% complete)
+#### Advanced Indexing (Status: 🟡 30% complete)
 - [x] Secondary equality indexes
-- [ ] **B-tree Indexes** → `plans/postgresql/15-btree-indexes.md`
+- [x] **B-tree Indexes** → `plans/postgresql/15-btree-indexes.md`
 - [ ] **GIN Indexes (JSON, arrays)** → `plans/postgresql/16-gin-indexes.md`
 - [ ] **GiST Indexes (geospatial)** → `plans/postgresql/17-gist-indexes.md`
 - [ ] **BRIN Indexes (large tables)** → `plans/postgresql/18-brin-indexes.md`
@@ -86,14 +86,14 @@
 ### 2. MongoDB Parity
 **File**: `plans/mongodb/FEATURES.md`
 
-#### Document Operations (Status: 🟡 15% complete)
+#### Document Operations (Status: 🟡 40% complete)
 - [x] Basic insertOne, findOne, updateOne, deleteOne
 - [x] Bulk operations
 - [ ] **Update Operators ($set, $unset, $inc)** → `plans/mongodb/01-update-operators.md`
-- [ ] **Array Operators ($push, $pull, $addToSet)** → `plans/mongodb/02-array-operators.md`
-- [ ] **Array Filters & Positional** → `plans/mongodb/03-array-filters.md`
-- [ ] **Upsert Logic** → `plans/mongodb/04-upsert.md`
-- [ ] **FindAndModify** → `plans/mongodb/05-findandmodify.md`
+- [x] **Array Operators ($push, $pull, $addToSet)** → `plans/mongodb/02-array-operators.md`
+- [x] **Array Filters & Positional** → `plans/mongodb/03-array-filters.md`
+- [x] **Upsert Logic** → `plans/mongodb/04-upsert.md`
+- [x] **FindAndModify** → `plans/mongodb/05-findandmodify.md`
 
 #### Aggregation Pipeline (Status: 🔴 0% complete)
 - [ ] **$match Stage** → `plans/mongodb/06-match.md`

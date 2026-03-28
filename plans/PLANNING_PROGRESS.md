@@ -22,13 +22,13 @@
 
 ## Completion Checklist
 
-### PostgreSQL Features (4/32 complete)
+### PostgreSQL Features (6/32 complete)
 - [x] 01-subqueries.md
 - [ ] 02-ctes.md
 - [ ] 03-window-functions.md
 - [ ] 04-joins.md (INNER, LEFT, RIGHT, FULL, CROSS, LATERAL)
 - [ ] 05-acid.md (Full ACID compliance)
-- [ ] 06-isolation.md (Isolation levels)
+- [x] 06-isolation.md (Isolation levels)
 - [ ] 07-savepoints.md
 - [ ] 08-deadlocks.md (Detection and resolution)
 - [ ] 09-foreign-keys.md
@@ -37,7 +37,7 @@
 - [ ] 12-column-constraints.md (NOT NULL, DEFAULT)
 - [ ] 13-sequences.md (SERIAL, IDENTITY)
 - [ ] 14-alter-table.md
-- [ ] 15-btree-indexes.md
+- [x] 15-btree-indexes.md
 - [x] 16-gin-indexes.md (JSON, arrays)
 - [ ] 17-gist-indexes.md (Geospatial)
 - [ ] 18-brin-indexes.md (Block range)
@@ -56,13 +56,13 @@
 - [ ] 31-partitioning.md (Range, list, hash)
 - [ ] 32-copy-listen.md (COPY, LISTEN/NOTIFY)
 
-### MongoDB Features (4/34 complete)
+### MongoDB Features (8/34 complete)
 - [x] AGGREGATION_PIPELINE.md (overview)
 - [x] update-operators.md ($set, $unset, $inc, $mul, $rename, $setOnInsert)
-- [ ] 02-array-operators.md ($push, $pull, $pop, $addToSet, $pullAll)
-- [ ] 03-array-filters.md (Positional operators, arrayFilters)
-- [ ] 04-upsert.md
-- [ ] 05-findandmodify.md
+- [x] 02-array-operators.md ($push, $pull, $pop, $addToSet, $pullAll)
+- [x] 03-array-filters.md (Positional operators, arrayFilters)
+- [x] 04-upsert.md
+- [x] 05-findandmodify.md
 - [ ] 06-match.md ($match stage details)
 - [ ] 07-project.md ($project stage details)
 - [ ] 08-group.md ($group stage details)
