@@ -250,7 +250,7 @@ curl https://localhost:8443/v1/admin/reshard/status \
 
 - [ ] TLS enabled with valid certificates
 - [ ] Strong admin password configured
-- [ ] Default admin credentials changed
+- [ ] Default admin credentials changed (a secure random password is auto-generated if none provided)
 - [ ] Rate limiting configured appropriately
 - [ ] Audit logs enabled and monitored
 - [ ] File permissions secured (700 for data dir)

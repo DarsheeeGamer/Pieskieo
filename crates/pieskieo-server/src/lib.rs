@@ -28,6 +28,7 @@ use pieskieo_core::{
     PieskieoDb, PieskieoError, SchemaDef, SchemaField, SqlResult,
     VectorParams as PieskieoVectorParams,
 };
+use rand::{distributions::Alphanumeric, Rng};
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use sqlparser::{dialect::GenericDialect, parser::Parser};
@@ -270,16 +271,20 @@ impl AuthConfig {
             }
         }
         let bearer = std::env::var("PIESKIEO_TOKEN").ok();
+        let mut default_admin_generated = false;
         // default admin if nothing configured (even if auth_users.json exists but was empty/invalid)
         if users.is_empty() && bearer.is_none() {
-            tracing::info!("No users configured; creating default admin user (Pieskieo/pieskieo)");
+            let pass = Self::generate_secure_password();
+            tracing::warn!("No users configured; generated secure default admin password: {pass}");
+            tracing::warn!("THIS PASSWORD HAS BEEN PERSISTED to auth_users.json. PLEASE CHANGE IT IMMEDIATELY.");
             users.push(UserRec {
-                user: "Pieskieo".into(),
-                password_hash: Self::hash_password("pieskieo"),
+                user: "admin".into(),
+                password_hash: Self::hash_password(&pass),
                 role: Role::Admin,
             });
+            default_admin_generated = true;
         }
-        Self {
+        let config = Self {
             users,
             bearer,
             path,
@@ -287,7 +292,11 @@ impl AuthConfig {
             max_failures,
             lockout,
             window,
+        };
+        if default_admin_generated {
+            config.persist();
         }
+        config
     }
 
     fn enabled(&self) -> bool {
@@ -350,6 +359,23 @@ impl AuthConfig {
             );
             let _ = std::fs::write(&self.path, txt);
         }
+    }
+
+    fn generate_secure_password() -> String {
+        let mut rng = rand::thread_rng();
+        let mut pass: String = rng
+            .sample_iter(&Alphanumeric)
+            .take(28)
+            .map(char::from)
+            .collect();
+
+        // Ensure complexity requirements: upper, lower, digit, symbol
+        pass.push(rng.gen_range('A'..='Z'));
+        pass.push(rng.gen_range('a'..='z'));
+        pass.push(rng.gen_range('0'..='9'));
+        pass.push('!'); // simplest symbol
+
+        pass
     }
 
     fn hash_password(pass: &str) -> String {
@@ -3027,5 +3053,36 @@ mod tests {
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].1["team"], "red");
         assert_eq!(merged[0].1["c"], 2);
+    }
+
+    #[test]
+    fn auth_config_generates_and_persists_default_admin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data_dir = tmp.path().to_str().unwrap();
+
+        // Ensure no environment variables interfere
+        std::env::remove_var("PIESKIEO_USERS");
+        std::env::remove_var("PIESKIEO_AUTH_USER");
+        std::env::remove_var("PIESKIEO_AUTH_PASSWORD");
+        std::env::remove_var("PIESKIEO_TOKEN");
+
+        let auth = AuthConfig::from_env(data_dir);
+
+        assert_eq!(auth.users.len(), 1);
+        assert_eq!(auth.users[0].user, "admin");
+        assert_eq!(auth.users[0].role, Role::Admin);
+
+        // Verify persistence
+        let path = tmp.path().join("auth_users.json");
+        assert!(path.exists());
+        let content = std::fs::read_to_string(path).unwrap();
+        let disk_users: Vec<UserDisk> = serde_json::from_str(&content).unwrap();
+        assert_eq!(disk_users.len(), 1);
+        assert_eq!(disk_users[0].user, "admin");
+        assert_eq!(disk_users[0].role, "admin");
+
+        // Verify the hash is valid
+        // We don't have the plain password here, but we know it should be a hash.
+        assert!(disk_users[0].pass.starts_with("$argon2id$"));
     }
 }
