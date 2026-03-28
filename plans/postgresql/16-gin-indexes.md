@@ -1,189 +1,288 @@
-# PostgreSQL Feature: GIN Indexes (Generalized Inverted Indexes)
+# PostgreSQL Feature: GIN Indexes (Generalized Inverted Index)
 
 **Status**: 🔴 Not Started  
 **Priority**: High  
-**Dependencies**: B-tree indexes (15-btree-indexes.md)  
-**Estimated Effort**: 3 weeks
+**Dependencies**: B-tree Indexes, JSON/JSONB Types
+**Estimated Effort**: 3-4 weeks
 
 ---
 
 ## Overview
 
-GIN indexes are specialized for indexing composite values like arrays, JSONB, and full-text search. Essential for document model queries.
+GIN (Generalized Inverted Index) is designed for handling cases where the items to be indexed are composite values, and the queries need to search for element values that appear within the composite items. They are critical for accelerating searches over arrays, JSONB, and full-text search documents.
+
+## Target Functionality
+
+### 1. Array Indexing
+- Fast containment queries (`@>`, `<@`, `&&`, `=`)
+- Fast element search (`ANY`)
+
+### 2. JSONB Indexing
+- Fast key existence checks (`?`, `?|`, `?&`)
+- Fast path/value queries (`@>`)
+
+### 3. Full-Text Search
+- Fast text matching (`@@`)
 
 ---
 
-## Use Cases
+## Implementation Plan
 
-1. **Array containment**: `WHERE tags @> ARRAY['sql', 'database']`
-2. **JSONB queries**: `WHERE data @> '{"status": "active"}'::jsonb`
-3. **Full-text search**: `WHERE to_tsvector(content) @@ to_tsquery('search')`
+### Phase 1: GIN Data Structure
 
----
-
-## Data Structure
+The GIN index structure consists of:
+1. **Entry Tree**: A B-tree of all unique elements (entries) found in the indexed column.
+2. **Posting Lists/Trees**: Associated with each entry in the Entry Tree. It contains a list (or B-tree) of `ItemPointer`s (row IDs) where the entry occurs.
 
 ```rust
-pub struct GINIndex {
-    // Inverted index: value -> posting list
-    entries: BTreeMap<IndexKey, PostingList>,
-    // For JSONB: path -> values
-    paths: HashMap<JsonPath, Vec<IndexKey>>,
+// crates/pieskieo-core/src/index/gin.rs
+
+pub struct GinIndex {
+    name: String,
+    table: String,
+    column: String,
+    // Entry Tree maps a specific value (e.g., array element or JSON key/value)
+    // to a list of row IDs (Posting List)
+    entry_tree: BTreeMap<IndexValue, PostingList>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IndexValue {
+    String(String),
+    Integer(i64),
+    Float(ordered_float::OrderedFloat<f64>),
+    Boolean(bool),
+    // For JSONB, we might index paths and values together
+    JsonPathValue { path: String, value: Box<IndexValue> },
 }
 
 pub struct PostingList {
-    // Row IDs containing this value
-    rows: Vec<RowPointer>,
-    // Compressed bitmap for large lists
-    bitmap: Option<RoaringBitmap>,
+    // Row IDs where the entry is found.
+    // Optimized as an ordered list for fast intersection/union.
+    row_ids: Vec<RowId>,
+    // If posting list gets too large, it can become a B-tree (Posting Tree)
 }
+```
 
-impl GINIndex {
-    pub fn insert(&mut self, row_id: RowPointer, values: Vec<Value>) -> Result<()> {
-        // For array [1, 2, 3], create entries:
-        // 1 -> [row_id]
-        // 2 -> [row_id]  
-        // 3 -> [row_id]
-        for value in values {
-            self.entries
-                .entry(IndexKey::from(value))
-                .or_default()
-                .add(row_id);
-        }
-        Ok(())
-    }
-    
-    pub fn search_contains(&self, query_values: &[Value]) -> Result<Vec<RowPointer>> {
-        // Find intersection of posting lists
-        let mut result: Option<PostingList> = None;
-        
-        for value in query_values {
-            if let Some(posting_list) = self.entries.get(&IndexKey::from(value)) {
-                result = Some(match result {
-                    None => posting_list.clone(),
-                    Some(prev) => prev.intersect(posting_list)?,
-                });
-            } else {
-                return Ok(vec![]);  // No matches
+### Phase 2: Index Extraction Strategy
+
+For each indexed data type, we need an extraction strategy to pull entries from a row.
+
+#### Array Extraction
+
+```rust
+impl GinIndex {
+    fn extract_array_entries(&self, array: &Value) -> Result<Vec<IndexValue>> {
+        if let Value::Array(arr) = array {
+            let mut entries = Vec::new();
+            for item in arr {
+                entries.push(IndexValue::from_value(item)?);
             }
+            // Remove duplicates within the same row to save space
+            entries.sort();
+            entries.dedup();
+            Ok(entries)
+        } else {
+            Err(PieskieoError::InvalidType("Expected Array".into()))
         }
-        
-        Ok(result.map(|pl| pl.rows).unwrap_or_default())
     }
 }
 ```
 
----
+#### JSONB Extraction
 
-## JSONB Indexing
+Two main strategies for JSONB (PostgreSQL supports `jsonb_ops` and `jsonb_path_ops`):
+
+1. **Default (`jsonb_ops`)**: Index every key, value, and array element.
+2. **Path Ops (`jsonb_path_ops`)**: Index the hash of the full path to a value.
 
 ```rust
-pub struct JSONBGINIndex {
-    // Index all paths and values
-    index: GINIndex,
-}
-
-impl JSONBGINIndex {
-    pub fn index_document(&mut self, row_id: RowPointer, doc: &Value) -> Result<()> {
-        let entries = self.extract_entries(doc, &JsonPath::root())?;
-        
-        for (path, value) in entries {
-            self.index.insert(row_id, vec![value])?;
-        }
-        
-        Ok(())
-    }
-    
-    fn extract_entries(&self, value: &Value, path: &JsonPath) -> Result<Vec<(JsonPath, Value)>> {
+impl GinIndex {
+    fn extract_jsonb_entries(&self, json: &Value) -> Result<Vec<IndexValue>> {
         let mut entries = Vec::new();
-        
-        match value {
-            Value::Object(map) => {
-                for (key, val) in map {
-                    let new_path = path.append(key);
-                    entries.push((new_path.clone(), Value::String(key.clone())));
-                    entries.extend(self.extract_entries(val, &new_path)?);
+        self.extract_jsonb_recursive(json, "", &mut entries)?;
+        entries.sort();
+        entries.dedup();
+        Ok(entries)
+    }
+
+    fn extract_jsonb_recursive(&self, json: &Value, current_path: &str, entries: &mut Vec<IndexValue>) -> Result<()> {
+        match json {
+            Value::Object(obj) => {
+                for (k, v) in obj {
+                    // Index the key itself
+                    entries.push(IndexValue::String(k.clone()));
+                    // Recurse
+                    let new_path = if current_path.is_empty() { k.clone() } else { format!("{}.{}", current_path, k) };
+                    self.extract_jsonb_recursive(v, &new_path, entries)?;
                 }
             }
             Value::Array(arr) => {
-                for (idx, val) in arr.iter().enumerate() {
-                    let new_path = path.append_index(idx);
-                    entries.extend(self.extract_entries(val, &new_path)?);
+                for item in arr {
+                    self.extract_jsonb_recursive(item, current_path, entries)?;
                 }
             }
-            _ => {
-                entries.push((path.clone(), value.clone()));
-            }
+            // Index the leaf value
+            _ => entries.push(IndexValue::from_value(json)?),
         }
-        
-        Ok(entries)
+        Ok(())
     }
-    
-    pub fn query_jsonb(&self, query: &JsonQuery) -> Result<Vec<RowPointer>> {
+}
+```
+
+### Phase 3: Query Execution
+
+The query execution involves finding the posting lists for query elements and performing set operations.
+
+```rust
+impl GinIndex {
+    pub fn search(&self, query: &GinQuery) -> Result<Vec<RowId>> {
         match query {
-            JsonQuery::Contains { path, value } => {
-                self.index.search_contains(&[value.clone()])
-            }
-            JsonQuery::PathExists { path } => {
-                // Find all rows with this path
-                self.index.search_path_exists(path)
-            }
-            JsonQuery::And(queries) => {
-                // Intersect results
+            GinQuery::ContainsAll(entries) => {
+                // @> operator (Array or JSONB)
+                // Need to find rows that have ALL the specified entries
                 let mut result = None;
-                for q in queries {
-                    let rows = self.query_jsonb(q)?;
-                    result = Some(match result {
-                        None => rows,
-                        Some(prev) => intersect_sorted(&prev, &rows),
-                    });
+                for entry in entries {
+                    if let Some(posting_list) = self.entry_tree.get(entry) {
+                        match result {
+                            None => result = Some(posting_list.row_ids.clone()),
+                            Some(mut current) => {
+                                // Intersect current with posting_list
+                                current = self.intersect(&current, &posting_list.row_ids);
+                                result = Some(current);
+                            }
+                        }
+                    } else {
+                        // Entry not found, so no row contains ALL entries
+                        return Ok(Vec::new());
+                    }
                 }
                 Ok(result.unwrap_or_default())
             }
+            GinQuery::ContainsAny(entries) => {
+                // && operator or JSONB ?| operator
+                // Need to find rows that have ANY of the specified entries
+                let mut result = Vec::new();
+                for entry in entries {
+                    if let Some(posting_list) = self.entry_tree.get(entry) {
+                        // Union current with posting_list
+                        result = self.union(&result, &posting_list.row_ids);
+                    }
+                }
+                Ok(result)
+            }
+            // ... handling other operators
         }
+    }
+
+    fn intersect(&self, list1: &[RowId], list2: &[RowId]) -> Vec<RowId> {
+        // Fast intersection of two sorted lists
+        let mut i = 0;
+        let mut j = 0;
+        let mut result = Vec::new();
+        while i < list1.len() && j < list2.len() {
+            if list1[i] == list2[j] {
+                result.push(list1[i]);
+                i += 1;
+                j += 1;
+            } else if list1[i] < list2[j] {
+                i += 1;
+            } else {
+                j += 1;
+            }
+        }
+        result
+    }
+
+    fn union(&self, list1: &[RowId], list2: &[RowId]) -> Vec<RowId> {
+        // Fast union of two sorted lists
+        let mut i = 0;
+        let mut j = 0;
+        let mut result = Vec::new();
+        while i < list1.len() && j < list2.len() {
+            if list1[i] == list2[j] {
+                result.push(list1[i]);
+                i += 1;
+                j += 1;
+            } else if list1[i] < list2[j] {
+                result.push(list1[i]);
+                i += 1;
+            } else {
+                result.push(list2[j]);
+                j += 1;
+            }
+        }
+        while i < list1.len() {
+            result.push(list1[i]);
+            i += 1;
+        }
+        while j < list2.len() {
+            result.push(list2[j]);
+            j += 1;
+        }
+        result
     }
 }
 ```
 
----
+### Phase 4: Concurrency and Updates (Fast Update)
 
-## Performance Optimizations
+Updating a GIN index entry by entry for every row modification is very slow because a single row can generate dozens of index entries.
 
-### 1. Posting List Compression
+**Optimization: Fast Update (Pending List)**
+
+PostgreSQL uses a "pending list" to batch GIN updates.
+
 ```rust
-impl PostingList {
-    fn compress(&mut self) {
-        if self.rows.len() > 1000 {
-            // Convert to roaring bitmap
-            self.bitmap = Some(RoaringBitmap::from_iter(
-                self.rows.iter().map(|r| r.row_id.as_u128() as u32)
-            ));
-            self.rows.clear();  // Save memory
-        }
-    }
+pub struct GinIndexWithFastUpdate {
+    // The main index structure
+    main_index: GinIndex,
+    // Unsorted list of new entries (RowId, Extracted Entries)
+    pending_list: RwLock<Vec<(RowId, Vec<IndexValue>)>>,
+    // Configuration
+    fast_update_limit_bytes: usize,
 }
-```
 
-### 2. Fast Set Operations
-```rust
-impl PostingList {
-    fn intersect(&self, other: &PostingList) -> Result<PostingList> {
-        match (&self.bitmap, &other.bitmap) {
-            (Some(b1), Some(b2)) => {
-                // Fast bitmap AND
-                Ok(PostingList {
-                    rows: vec![],
-                    bitmap: Some(b1 & b2),
-                })
-            }
-            _ => {
-                // Merge sorted lists
-                Ok(PostingList {
-                    rows: intersect_sorted(&self.rows, &other.rows),
-                    bitmap: None,
-                })
+impl GinIndexWithFastUpdate {
+    pub fn insert(&self, row_id: RowId, value: &Value) -> Result<()> {
+        let entries = self.main_index.extract_entries(value)?;
+        
+        let mut pending = self.pending_list.write();
+        pending.push((row_id, entries));
+        
+        // If pending list is too large, flush to main index
+        if self.estimate_pending_size(&pending) > self.fast_update_limit_bytes {
+            self.flush_pending_list(&mut pending)?;
+        }
+        Ok(())
+    }
+    
+    fn flush_pending_list(&self, pending: &mut Vec<(RowId, Vec<IndexValue>)>) -> Result<()> {
+        // 1. Group by IndexValue
+        let mut grouped = BTreeMap::new();
+        for (row_id, entries) in pending.drain(..) {
+            for entry in entries {
+                grouped.entry(entry).or_insert_with(Vec::new).push(row_id);
             }
         }
+        
+        // 2. Insert into main index in batch
+        for (entry, mut row_ids) in grouped {
+            row_ids.sort();
+            row_ids.dedup();
+            self.main_index.batch_insert(entry, row_ids)?;
+        }
+        Ok(())
+    }
+
+    pub fn search(&self, query: &GinQuery) -> Result<Vec<RowId>> {
+        // Must search BOTH main index and pending list
+        let main_results = self.main_index.search(query)?;
+        
+        let pending = self.pending_list.read();
+        let pending_results = self.search_pending(&pending, query)?;
+        
+        Ok(self.main_index.union(&main_results, &pending_results))
     }
 }
 ```
@@ -192,101 +291,47 @@ impl PostingList {
 
 ## Test Cases
 
+### Test 1: Array Contains (`@>`)
 ```sql
--- Array containment
-CREATE INDEX idx_posts_tags ON posts USING GIN(tags);
+CREATE TABLE docs (id INT, tags TEXT[]);
+INSERT INTO docs VALUES (1, '{"tech", "database", "rust"}'), (2, '{"tech", "web"}'), (3, '{"database"}');
+CREATE INDEX idx_tags ON docs USING gin (tags);
 
-SELECT * FROM posts WHERE tags @> ARRAY['rust', 'database'];
--- Uses GIN index
+-- Should use index and return row 1
+EXPLAIN SELECT * FROM docs WHERE tags @> '{"tech", "rust"}';
+```
 
--- JSONB queries
-CREATE INDEX idx_users_metadata ON users USING GIN(metadata);
+### Test 2: JSONB Path Exists (`?`)
+```sql
+CREATE TABLE logs (id INT, data JSONB);
+INSERT INTO logs VALUES (1, '{"user": "alice", "action": "login"}');
+INSERT INTO logs VALUES (2, '{"user": "bob", "error": "auth_failed"}');
+CREATE INDEX idx_data ON logs USING gin (data);
 
-SELECT * FROM users WHERE metadata @> '{"country": "USA", "active": true}';
--- Uses GIN index
+-- Should use index and return row 2
+EXPLAIN SELECT * FROM logs WHERE data ? 'error';
+```
 
--- Path existence
-SELECT * FROM users WHERE metadata ? 'premium_member';
--- Uses GIN index
+### Test 3: JSONB Contains (`@>`)
+```sql
+-- Should use index and return row 1
+EXPLAIN SELECT * FROM logs WHERE data @> '{"user": "alice"}';
 ```
 
 ---
 
-## Metrics
+## Performance Targets
 
+- **Insertion**: Fast Update must batch at least 10,000 items before flushing.
+- **Search Latency**: < 5ms for highly selective queries on 1M rows.
+- **Memory Overhead**: Posting lists must be tightly packed (e.g., delta encoded or using roaring bitmaps).
+
+## Metrics to Track
+
+- `pieskieo_gin_pending_list_size_bytes`
+- `pieskieo_gin_flush_duration_ms`
 - `pieskieo_gin_index_size_bytes`
-- `pieskieo_gin_posting_lists_total`
 - `pieskieo_gin_search_duration_ms`
 
----
-
 **Created**: 2026-02-08
-
----
-
-## PRODUCTION ADDITIONS (Fast Updates & Compression)
-
-### Pending List for Fast Updates
-
-```rust
-pub struct GINIndexWithPendingList {
-    main_index: GINIndex,
-    pending_list: Arc<RwLock<Vec<(Value, Uuid)>>>,
-    pending_size: AtomicUsize,
-    max_pending_size: usize,
-}
-
-impl GINIndexWithPendingList {
-    pub fn insert_fast(&self, key: Value, tuple_id: Uuid) -> Result<()> {
-        // Fast path: add to pending list
-        let mut pending = self.pending_list.write();
-        pending.push((key, tuple_id));
-        
-        let size = self.pending_size.fetch_add(1, Ordering::Relaxed);
-        
-        if size > self.max_pending_size {
-            drop(pending);
-            self.merge_pending_list()?;
-        }
-        
-        Ok(())
-    }
-    
-    fn merge_pending_list(&self) -> Result<()> {
-        let mut pending = self.pending_list.write();
-        
-        // Batch insert into main index
-        for (key, tuple_id) in pending.drain(..) {
-            self.main_index.insert(key, tuple_id)?;
-        }
-        
-        self.pending_size.store(0, Ordering::Relaxed);
-        Ok(())
-    }
-}
-```
-
-### Posting List Compression
-
-```rust
-impl PostingList {
-    pub fn compress(&self) -> CompressedPostingList {
-        // Use delta encoding + variable-byte encoding
-        let mut deltas = Vec::new();
-        let mut prev = 0u64;
-        
-        for &id in &self.tuple_ids {
-            let delta = id - prev;
-            deltas.push(delta);
-            prev = id;
-        }
-        
-        // Variable-byte encode deltas
-        let compressed = vbyte_encode(&deltas);
-        
-        CompressedPostingList { data: compressed }
-    }
-}
-```
-
-**Review Status**: Production-Ready (with fast updates)
+**Author**: Implementation Team
