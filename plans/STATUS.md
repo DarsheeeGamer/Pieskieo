@@ -9,7 +9,7 @@
 
 ## Progress
 
-**Completed**: 7/157 (4%)
+**Completed**: 8/157 (5%)
 
 ### Detailed Plans Created
 1. ✅ postgresql/01-subqueries.md
@@ -36,9 +36,12 @@
 15. ✅ weaviate/hybrid-fusion.md
 16. ✅ kuzu/cypher-match.md
 
+### Completed (Tier 1 Batch 3)
+17. ✅ core-features/06-prepared-stmts.md
+
 ---
 
-## Remaining: 141 plans
+## Remaining: 149 plans
 
 **Estimated Completion**: 6-8 more responses  
 **Then**: Single commit with all 157 plans
