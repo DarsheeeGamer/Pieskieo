@@ -62,7 +62,7 @@
 - [ ] 02-array-operators.md ($push, $pull, $pop, $addToSet, $pullAll)
 - [ ] 03-array-filters.md (Positional operators, arrayFilters)
 - [ ] 04-upsert.md
-- [ ] 05-findandmodify.md
+- [x] 05-findandmodify.md
 - [ ] 06-match.md ($match stage details)
 - [ ] 07-project.md ($project stage details)
 - [ ] 08-group.md ($group stage details)
@@ -70,14 +70,14 @@
 - [x] lookup.md ($lookup/joins details)
 - [x] facet.md ($facet multi-pipeline)
 - [ ] 12-bucket.md ($bucket histograms)
-- [ ] 13-sort-limit.md ($sort, $limit, $skip)
-- [ ] 14-field-manipulation.md ($addFields, $replaceRoot)
-- [ ] 15-pipeline-optimization.md
+- [x] 13-sort-limit.md ($sort, $limit, $skip)
+- [x] 14-field-manipulation.md ($addFields, $replaceRoot)
+- [x] 15-pipeline-optimization.md
 - [ ] 16-query-operators.md ($gt, $gte, $lt, $lte, $in, $nin, $ne)
-- [ ] 17-logical-operators.md ($and, $or, $not, $nor)
-- [ ] 18-element-operators.md ($exists, $type)
-- [ ] 19-evaluation-operators.md ($regex, $expr, $mod, $where)
-- [ ] 20-array-queries.md ($all, $elemMatch, $size)
+- [x] 17-logical-operators.md ($and, $or, $not, $nor)
+- [x] 18-element-operators.md ($exists, $type)
+- [x] 19-evaluation-operators.md ($regex, $expr, $mod, $where)
+- [x] 20-array-queries.md ($all, $elemMatch, $size)
 - [ ] 21-compound-indexes.md
 - [ ] 22-multikey-indexes.md (Array indexes)
 - [ ] 23-text-indexes.md

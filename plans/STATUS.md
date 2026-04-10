@@ -21,9 +21,14 @@
 7. ✅ postgresql/15-btree-indexes.md
 
 ### In Progress (Current Response)
-- cross-cutting/parser-architecture
-- cross-cutting/execution-engine
-- cross-cutting/query-optimizer
+- mongodb/05-findandmodify.md
+- mongodb/13-sort-limit.md
+- mongodb/14-field-manipulation.md
+- mongodb/15-pipeline-optimization.md
+- mongodb/17-logical-operators.md
+- mongodb/18-element-operators.md
+- mongodb/19-evaluation-operators.md
+- mongodb/20-array-queries.md
 
 ### Completed (Tier 1 Batch 2)
 8. ✅ postgresql/16-gin-indexes.md
@@ -38,7 +43,7 @@
 
 ---
 
-## Remaining: 141 plans
+## Remaining: 133 plans
 
 **Estimated Completion**: 6-8 more responses  
 **Then**: Single commit with all 157 plans
