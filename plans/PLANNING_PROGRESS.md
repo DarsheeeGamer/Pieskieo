@@ -172,8 +172,11 @@
 - [ ] 28-copy-from.md (COPY FROM)
 - [ ] 29-batch-import.md
 
-### Cross-Cutting Features (1/18 complete)
+### Cross-Cutting Features (4/21 complete)
 - [x] UNIFIED_QUERY_LANGUAGE.md (design)
+- [x] parser-architecture.md
+- [x] execution-engine.md
+- [x] query-optimizer.md
 - [ ] 01-unified-query.md (Combined SQL + Cypher)
 - [ ] 02-vector-sql.md (Vector search in SQL)
 - [ ] 03-graph-sql.md (Graph traversal in SQL)

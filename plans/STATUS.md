@@ -9,7 +9,7 @@
 
 ## Progress
 
-**Completed**: 7/157 (4%)
+**Completed**: 10/157 (6%)
 
 ### Detailed Plans Created
 1. ✅ postgresql/01-subqueries.md
@@ -21,9 +21,9 @@
 7. ✅ postgresql/15-btree-indexes.md
 
 ### In Progress (Current Response)
-- cross-cutting/parser-architecture
-- cross-cutting/execution-engine
-- cross-cutting/query-optimizer
+- mongodb/02-array-operators
+- mongodb/03-array-filters
+- mongodb/04-upsert
 
 ### Completed (Tier 1 Batch 2)
 8. ✅ postgresql/16-gin-indexes.md
@@ -35,10 +35,13 @@
 14. ✅ weaviate/bm25.md
 15. ✅ weaviate/hybrid-fusion.md
 16. ✅ kuzu/cypher-match.md
+17. ✅ cross-cutting/parser-architecture.md
+18. ✅ cross-cutting/execution-engine.md
+19. ✅ cross-cutting/query-optimizer.md
 
 ---
 
-## Remaining: 141 plans
+## Remaining: 138 plans
 
 **Estimated Completion**: 6-8 more responses  
 **Then**: Single commit with all 157 plans
