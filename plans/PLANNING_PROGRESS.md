@@ -15,8 +15,8 @@
 | Weaviate | 22 | 2 | 0 | 20 |
 | LanceDB | 22 | 0 | 0 | 22 |
 | Kùzu | 29 | 1 | 0 | 28 |
-| Cross-Cutting | 18 | 1 | 3 | 14 |
-| **TOTAL** | **157** | **12** | **3** | **142** |
+| Cross-Cutting | 18 | 4 | 0 | 14 |
+| **TOTAL** | **157** | **15** | **0** | **142** |
 
 ---
 
@@ -172,9 +172,12 @@
 - [ ] 28-copy-from.md (COPY FROM)
 - [ ] 29-batch-import.md
 
-### Cross-Cutting Features (1/18 complete)
+### Cross-Cutting Features (4/18 complete)
 - [x] UNIFIED_QUERY_LANGUAGE.md (design)
 - [ ] 01-unified-query.md (Combined SQL + Cypher)
+- [x] parser-architecture.md
+- [x] execution-engine.md
+- [x] query-optimizer.md
 - [ ] 02-vector-sql.md (Vector search in SQL)
 - [ ] 03-graph-sql.md (Graph traversal in SQL)
 - [ ] 04-cross-joins.md (Cross-model JOINs)
